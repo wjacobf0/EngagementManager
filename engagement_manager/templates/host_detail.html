@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% macro svc_form(action, close_id, svc=None) %}
+<form method="post" action="{{ action }}">
+  <div class="row">
+    <div class="field"><label>Port</label><input name="port" type="number" min="1" max="65535" value="{{ svc.port if svc else '' }}" required /></div>
+    <div class="field"><label>Protocol</label>
+      <select name="protocol">
+        {% for p in ['tcp','udp'] %}<option value="{{ p }}" {{ 'selected' if svc and svc.protocol==p else '' }}>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>State</label>
+      <select name="state">
+        {% for st in ['open','closed','filtered'] %}<option value="{{ st }}" {{ 'selected' if svc and svc.state==st else ('selected' if not svc and st=='open' else '') }}>{{ st }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field"><label>Service</label><input name="service_name" value="{{ svc.service_name or '' if svc else '' }}" placeholder="smb, http, ssh…" /></div>
+  <div class="row">
+    <div class="field grow"><label>Product</label><input name="product" value="{{ svc.product or '' if svc else '' }}" placeholder="nginx, OpenSSH…" /></div>
+    <div class="field"><label>Version</label><input name="version" value="{{ svc.version or '' if svc else '' }}" placeholder="1.18.0" /></div>
+  </div>
+  <div class="modal-actions">
+    <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
+    <button type="submit">Save port</button>
+  </div>
+</form>
+{% endmacro %}
+
+{% macro cred_form(action, close_id, types, levels, link=None, cred=None, secret='') %}
+<form method="post" action="{{ action }}">
+  <div class="row">
+    <div class="field"><label>Domain</label><input name="domain" value="{{ cred.domain or '' if cred else '' }}" placeholder="corp.local" /></div>
+    <div class="field grow"><label>Username</label><input name="username" value="{{ cred.username if cred else '' }}" placeholder="administrator" required /></div>
+  </div>
+  <div class="field"><label>Secret (password or hash){% if link %} — leave blank to keep{% endif %}</label><input name="secret" value="" placeholder="password or hash" {{ 'required' if not link else '' }} /></div>
+  <div class="row">
+    <div class="field"><label>Type</label>
+      <select name="secret_type">
+        {% for t in types %}<option value="{{ t.value }}" {{ 'selected' if cred and cred.secret_type==t else '' }}>{{ t.value }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Access level</label>
+      <select name="access_level">
+        {% for a in levels %}<option value="{{ a.value }}" {{ 'selected' if link and link.access_level==a else ('selected' if not link and a.value=='user' else '') }}>{{ a.value }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Proto</label><input name="proto" value="{{ link.proto or '' if link else '' }}" placeholder="smb, winrm, ssh…" /></div>
+  </div>
+  <div class="modal-actions">
+    <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
+    <button type="submit">Save credential</button>
+  </div>
+</form>
+{% endmacro %}
+
+{% block body %}
+{% set services = host.services | sort(attribute='port') %}
+<div class="topbar">
+  <a href="/hosts" class="muted">← Hosts</a>
+  <h1 class="mono">{{ host.ip }}</h1>
+  <span class="badge {{ host.status.value }}">{{ host.status.value }}</span>
+</div>
+
+<div class="card">
+  <div class="kv">
+    <div><span class="l">Hostname</span>{{ host.hostname or "—" }}</div>
+    <div><span class="l">Domain</span>{{ host.domain or "—" }}</div>
+    <div><span class="l">OS</span>{{ host.os or "—" }}</div>
+    <div><span class="l">Tags</span>{{ host.tags or "—" }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h3>Open ports / services</h3>
+    <button type="button" onclick="emShow('add-service')">+ Add port</button>
+  </div>
+  <table>
+    <thead><tr><th>Port</th><th>Proto</th><th>State</th><th>Service</th><th>Product / version</th><th></th></tr></thead>
+    <tbody>
+      {% for s in services %}
+      <tr>
+        <td class="mono">{{ s.port }}</td>
+        <td>{{ s.protocol }}</td>
+        <td>{{ s.state }}</td>
+        <td>{{ s.service_name or "—" }}</td>
+        <td class="muted">{{ (s.banner or s.product or "—") }}{% if s.version %} {{ s.version }}{% endif %}</td>
+        <td class="right nowrap">
+          <button class="link small" type="button" onclick="emShow('svc-edit-{{ s.id }}')">Edit</button>
+          <form method="post" action="/services/{{ s.id }}/delete" onsubmit="return confirm('Delete port {{ s.port }}/{{ s.protocol }}?')">
+            <button class="danger small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No open ports recorded. Use “+ Add port” or import an nmap scan.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<dialog id="add-service" class="modal">
+  <div class="modal-head"><h3>Add port</h3><button type="button" class="icon" onclick="emClose('add-service')" aria-label="Close">✕</button></div>
+  {{ svc_form('/hosts/' ~ host.id ~ '/services', 'add-service') }}
+</dialog>
+{% for s in services %}
+<dialog id="svc-edit-{{ s.id }}" class="modal">
+  <div class="modal-head"><h3>Edit port {{ s.port }}/{{ s.protocol }}</h3><button type="button" class="icon" onclick="emClose('svc-edit-{{ s.id }}')" aria-label="Close">✕</button></div>
+  {{ svc_form('/services/' ~ s.id ~ '/edit', 'svc-edit-' ~ s.id, s) }}
+</dialog>
+{% endfor %}
+
+<div class="card">
+  <div class="card-head">
+    <h3>Credentials proven here</h3>
+    <button type="button" onclick="emShow('add-cred')">+ Add credential</button>
+  </div>
+  <table>
+    <thead><tr><th>Access</th><th>Proto</th><th>Account</th><th>Secret</th><th></th></tr></thead>
+    <tbody>
+      {% for r in cred_rows %}
+      <tr>
+        <td><span class="badge {{ r.link.access_level.value }}">{{ r.link.access_level.value }}</span></td>
+        <td>{{ r.link.proto or "—" }}</td>
+        <td class="mono">{% if r.cred.domain %}{{ r.cred.domain }}\{% endif %}{{ r.cred.username }}</td>
+        <td class="mono break">{{ r.secret }}</td>
+        <td class="right nowrap">
+          <button class="link small" type="button" onclick="emShow('cred-edit-{{ r.link.id }}')">Edit</button>
+          <form method="post" action="/host-credentials/{{ r.link.id }}/delete" onsubmit="return confirm('Unlink this credential from the host?')">
+            <button class="danger small" type="submit">Unlink</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No credentials linked to this host.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<dialog id="add-cred" class="modal">
+  <div class="modal-head"><h3>Add credential</h3><button type="button" class="icon" onclick="emClose('add-cred')" aria-label="Close">✕</button></div>
+  {{ cred_form('/hosts/' ~ host.id ~ '/host-credentials', 'add-cred', secret_types, access_levels) }}
+</dialog>
+{% for r in cred_rows %}
+<dialog id="cred-edit-{{ r.link.id }}" class="modal">
+  <div class="modal-head"><h3>Edit credential</h3><button type="button" class="icon" onclick="emClose('cred-edit-{{ r.link.id }}')" aria-label="Close">✕</button></div>
+  {{ cred_form('/host-credentials/' ~ r.link.id ~ '/edit', 'cred-edit-' ~ r.link.id, secret_types, access_levels, r.link, r.cred, r.secret) }}
+</dialog>
+{% endfor %}
+
+<div class="card">
+  <div class="card-head">
+    <h3>Scripts</h3>
+    <button type="button" onclick="emShow('add-script')">+ Add script</button>
+  </div>
+
+  {% for sc in host.scripts | sort(attribute='created_at') %}
+  <details class="script">
+    <summary>
+      <span class="s-name">{{ sc.name }}</span>
+      {% if sc.filename %}<code>{{ sc.filename }}</code>{% endif %}
+      {% if sc.description %}<span class="muted desc">{{ sc.description }}</span>{% endif %}
+      <span class="s-actions">
+        <a href="/scripts/{{ sc.id }}/download" onclick="event.stopPropagation()">Download</a>
+      </span>
+    </summary>
+    <pre class="mono wrap code">{{ sc.content }}</pre>
+    <form method="post" action="/scripts/{{ sc.id }}/delete" onsubmit="return confirm('Delete script &quot;{{ sc.name }}&quot;?')">
+      <button class="danger small" type="submit">Delete</button>
+    </form>
+  </details>
+  {% else %}
+  <p class="muted">No scripts attached. Add one, e.g. a tunnel/pivot script.</p>
+  {% endfor %}
+</div>
+
+<dialog id="add-script" class="modal">
+  <div class="modal-head">
+    <h3>Add script</h3>
+    <button type="button" class="icon" onclick="emClose('add-script')" aria-label="Close">✕</button>
+  </div>
+  <div class="tabs">
+    <button id="tab-write" type="button" class="tab active" onclick="emTab('write')">Write text</button>
+    <button id="tab-upload" type="button" class="tab" onclick="emTab('upload')">Upload file</button>
+  </div>
+
+  <form id="form-write" method="post" action="/hosts/{{ host.id }}/scripts">
+    <div class="field"><label>Name</label><input name="name" placeholder="Tunnel Script" required /></div>
+    <div class="field"><label>Description</label><input name="description" placeholder="Used to tunnel to internal network" /></div>
+    <div class="field"><label>Filename (optional)</label><input name="filename" placeholder="tunnel.sh" /></div>
+    <div class="field"><label>Content</label><textarea name="content" rows="10" class="mono" placeholder="#!/bin/bash&#10;..."></textarea></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('add-script')">Cancel</button>
+      <button type="submit">Save script</button>
+    </div>
+  </form>
+
+  <form id="form-upload" class="hidden" method="post" action="/hosts/{{ host.id }}/scripts/upload" enctype="multipart/form-data">
+    <div class="field"><label>Name (optional)</label><input name="name" placeholder="defaults to the file name" /></div>
+    <div class="field"><label>Description</label><input name="description" placeholder="what it does" /></div>
+    <div class="field"><label>File</label><input type="file" name="file" required /></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('add-script')">Cancel</button>
+      <button type="submit">Upload script</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  // emShow / emClose are defined in base.html.
+  function emTab(which){
+    document.getElementById('tab-write').classList.toggle('active', which==='write');
+    document.getElementById('tab-upload').classList.toggle('active', which==='upload');
+    document.getElementById('form-write').classList.toggle('hidden', which!=='write');
+    document.getElementById('form-upload').classList.toggle('hidden', which!=='upload');
+  }
+</script>
+{% endblock %}

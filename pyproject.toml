@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engagement-manager"
+version = "0.2.0"
+description = "Local, Python-only manager for pentest engagement data: hosts, credentials, and nmap/nxc scans."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    # SQLModel < 0.0.30 breaks under pydantic 2.14 on Python 3.14
+    # ("Field 'id' requires a type annotation"); 0.0.30+ works on 3.11-3.14.
+    "sqlmodel>=0.0.30",
+    "fastapi>=0.115,<1.0",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "cryptography>=43",
+    "defusedxml>=0.7",
+]
+
+[project.scripts]
+engagement-manager = "engagement_manager.__main__:main"
+em = "engagement_manager.__main__:main"
+
+[tool.setuptools]
+packages = ["engagement_manager", "engagement_manager.parsers"]
+
+[tool.setuptools.package-data]
+engagement_manager = ["templates/*.html", "static/*.css"]

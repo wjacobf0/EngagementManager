@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+{% if not active %}
+  <div class="card muted">Create an engagement to get started.</div>
+{% else %}
+  <div class="topbar">
+    <h1>{{ active.name }}</h1>
+    <span class="badge {{ active.status.value }}">{{ active.status.value }}</span>
+    <form class="right" method="post" action="/engagements/{{ active.id }}/delete"
+          onsubmit="return confirm('Delete engagement &quot;{{ active.name }}&quot; and all of its hosts, credentials, scans, and scripts? This cannot be undone.')">
+      <button class="danger" type="submit">Delete engagement</button>
+    </form>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="n">{{ stats.hosts }}</div><div class="l">Hosts</div></div>
+    <div class="stat"><div class="n">{{ stats.alive }}</div><div class="l">Alive</div></div>
+    <div class="stat"><div class="n">{{ stats.open_ports }}</div><div class="l">Open ports</div></div>
+    <div class="stat"><div class="n">{{ stats.creds }}</div><div class="l">Credentials</div></div>
+    <div class="stat"><div class="n">{{ stats.validated }}</div><div class="l">Validated</div></div>
+  </div>
+
+  {% if active.scope %}
+  <div class="card">
+    <h3>Scope</h3>
+    <pre class="mono muted wrap">{{ active.scope }}</pre>
+  </div>
+  {% endif %}
+
+  <div class="card muted small">
+    Import scans fast from the terminal:
+    <code>engagement-manager import nmap scan.xml -e "{{ active.name }}"</code>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Engagement Manager</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Engagement Manager</div>
+    <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Dashboard</a>
+    <a href="/hosts" class="{{ 'active' if request.url.path == '/hosts' else '' }}">Hosts</a>
+    <a href="/credentials" class="{{ 'active' if request.url.path == '/credentials' else '' }}">Credentials</a>
+    <a href="/coverage" class="{{ 'active' if request.url.path == '/coverage' else '' }}">Coverage &amp; Gaps</a>
+    <a href="/scans" class="{{ 'active' if request.url.path == '/scans' else '' }}">Scan Imports</a>
+    <div class="spacer"></div>
+    <div class="muted small">Local · SQLite · encrypted secrets</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <form class="field" method="get" onsubmit="return false;">
+        <label>Engagement</label>
+        <select onchange="if(this.value) location.href='/select/'+this.value;">
+          {% if not engagements %}<option>(none yet)</option>{% endif %}
+          {% for e in engagements %}
+            <option value="{{ e.id }}" {{ 'selected' if active and e.id == active.id else '' }}>
+              {{ e.name }}{% if e.client %} — {{ e.client }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+      <div class="right">
+        <button class="secondary" type="button" onclick="emShow('new-eng')">+ New engagement</button>
+      </div>
+    </div>
+
+    <dialog id="new-eng" class="modal">
+      <div class="modal-head">
+        <h3>New engagement</h3>
+        <button type="button" class="icon" onclick="emClose('new-eng')" aria-label="Close">✕</button>
+      </div>
+      <form method="post" action="/engagements">
+        <div class="field"><label>Name</label><input name="name" placeholder="ACME Internal" required /></div>
+        <div class="field"><label>Client</label><input name="client" placeholder="ACME Corp" /></div>
+        <div class="field"><label>Scope</label><textarea name="scope" rows="4" placeholder="10.0.0.0/24&#10;corp.local"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" onclick="emClose('new-eng')">Cancel</button>
+          <button type="submit">Create engagement</button>
+        </div>
+      </form>
+    </dialog>
+
+    {% block body %}{% endblock %}
+  </main>
+</div>
+
+<script>
+  // Shared modal helpers (native <dialog>, with a fallback).
+  function emShow(id){ const d = document.getElementById(id); if(!d) return; d.showModal ? d.showModal() : d.setAttribute('open',''); }
+  function emClose(id){ const d = document.getElementById(id); if(!d) return; d.close ? d.close() : d.removeAttribute('open'); }
+</script>
+</body>
+</html>

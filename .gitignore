@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Local data (never commit the database or encryption key)
+*.db
+*.key
+engagement-manager-data/
+
+# Scan artifacts you may drop in locally
+*.nmap
+*.gnmap
+scans/

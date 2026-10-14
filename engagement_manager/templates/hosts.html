@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="topbar">
+  <h1>Hosts</h1>
+  {% if active %}<div class="right"><button type="button" onclick="emShow('new-host')">+ New host</button></div>{% endif %}
+</div>
+
+{% if active %}
+<dialog id="new-host" class="modal">
+  <div class="modal-head">
+    <h3>New host</h3>
+    <button type="button" class="icon" onclick="emClose('new-host')" aria-label="Close">✕</button>
+  </div>
+  <form method="post" action="/hosts">
+    <div class="field"><label>IP</label><input name="ip" placeholder="10.0.0.5" required /></div>
+    <div class="field"><label>Hostname</label><input name="hostname" placeholder="dc01" /></div>
+    <div class="field"><label>Domain</label><input name="domain" placeholder="corp.local" /></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('new-host')">Cancel</button>
+      <button type="submit">Add host</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Status</th><th>IP</th><th>Hostname</th><th>Domain</th><th>OS</th><th>Open ports</th><th>Scripts</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for h in hosts %}
+      <tr>
+        <td><span class="badge {{ h.status.value }}">{{ h.status.value }}</span></td>
+        <td class="mono"><a href="/hosts/{{ h.id }}">{{ h.ip }}</a></td>
+        <td>{{ h.hostname or "—" }}</td>
+        <td>{{ h.domain or "—" }}</td>
+        <td class="muted">{{ h.os or "—" }}</td>
+        <td class="mono">
+          {% set ports = h.services | selectattr('state','equalto','open') | map(attribute='port') | sort | list %}
+          {{ ports | join(", ") if ports else "—" }}
+        </td>
+        <td class="mono">{{ h.scripts | length or "—" }}</td>
+        <td class="right">
+          <form method="post" action="/hosts/{{ h.id }}/delete" onsubmit="return confirm('Delete host {{ h.ip }}?')">
+            <button class="danger small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">No hosts yet. Use “+ New host” or import a scan.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <div class="card muted">Create an engagement first.</div>
+{% endif %}
+{% endblock %}

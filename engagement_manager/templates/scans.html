@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="topbar">
+  <h1>Scan Imports</h1>
+  {% if active %}<div class="right"><button type="button" onclick="emShow('import-scan')">+ Import</button></div>{% endif %}
+</div>
+
+{% if active %}
+{% if error %}<div class="card error">{{ error }}</div>{% endif %}
+
+<dialog id="import-scan" class="modal">
+  <div class="modal-head">
+    <h3>Import scan</h3>
+    <button type="button" class="icon" onclick="emClose('import-scan')" aria-label="Close">✕</button>
+  </div>
+  <div class="tabs">
+    <button id="tab-nmap" type="button" class="tab active" onclick="scanTab('nmap')">nmap XML</button>
+    <button id="tab-nxc" type="button" class="tab" onclick="scanTab('nxc')">NetExec</button>
+  </div>
+
+  <form id="form-nmap" method="post" action="/scans/nmap" enctype="multipart/form-data">
+    <p class="muted small">Produce XML with <code>nmap -oX out.xml</code>, then import it. Hosts and open ports merge by IP.</p>
+    <div class="field"><label>nmap XML file</label><input type="file" name="file" accept=".xml,text/xml" required /></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('import-scan')">Cancel</button>
+      <button type="submit">Import</button>
+    </div>
+  </form>
+
+  <form id="form-nxc" class="hidden" method="post" action="/scans/nxc" enctype="multipart/form-data">
+    <p class="muted small">Redirect NetExec output to a file (e.g. <code>nxc smb ... | tee out.txt</code>), then import it. Captured credentials and admin access are recorded.</p>
+    <div class="field"><label>NetExec output (.txt)</label><input type="file" name="file" accept=".txt,.log,text/plain" required /></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('import-scan')">Cancel</button>
+      <button type="submit">Import</button>
+    </div>
+  </form>
+
+  <p class="muted small modal-foot">Prefer the terminal? <code>engagement-manager import nmap scan.xml -e "{{ active.name }}"</code></p>
+</dialog>
+
+<div class="card">
+  <table>
+    <thead><tr><th>When</th><th>Tool</th><th>File</th><th>Hosts +/~</th><th>Summary</th></tr></thead>
+    <tbody>
+      {% for s in scans %}
+      <tr>
+        <td class="muted">{{ s.imported_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ s.tool }}</td>
+        <td class="mono">{{ s.filename or "—" }}</td>
+        <td class="mono">{{ s.hosts_created }} / {{ s.hosts_updated }}</td>
+        <td class="muted">{{ s.summary }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No imports yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <div class="card muted">Create an engagement first.</div>
+{% endif %}
+
+<script>
+  function scanTab(which){
+    document.getElementById('tab-nmap').classList.toggle('active', which==='nmap');
+    document.getElementById('tab-nxc').classList.toggle('active', which==='nxc');
+    document.getElementById('form-nmap').classList.toggle('hidden', which!=='nmap');
+    document.getElementById('form-nxc').classList.toggle('hidden', which!=='nxc');
+  }
+</script>
+{% endblock %}
