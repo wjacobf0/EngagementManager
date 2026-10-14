@@ -21,6 +21,14 @@
   <form id="form-nmap" method="post" action="/scans/nmap" enctype="multipart/form-data">
     <p class="muted small">Produce XML with <code>nmap -oX out.xml</code>, then import it. Hosts and open ports merge by IP.</p>
     <div class="field"><label>nmap XML file</label><input type="file" name="file" accept=".xml,text/xml" required /></div>
+    <div class="field">
+      <label>Scanned from</label>
+      <select name="vantage">
+        <option value="">Operator box (direct)</option>
+        {% for h in hosts %}<option value="{{ h.id }}">via {{ h.hostname or h.ip }}{% if h.hostname %} ({{ h.ip }}){% endif %}</option>{% endfor %}
+      </select>
+      <span class="muted small">Pick a pivot if you ran this scan tunneled through another host.</span>
+    </div>
     <div class="modal-actions">
       <button type="button" class="secondary" onclick="emClose('import-scan')">Cancel</button>
       <button type="submit">Import</button>
@@ -30,6 +38,14 @@
   <form id="form-nxc" class="hidden" method="post" action="/scans/nxc" enctype="multipart/form-data">
     <p class="muted small">Redirect NetExec output to a file (e.g. <code>nxc smb ... | tee out.txt</code>), then import it. Captured credentials and admin access are recorded.</p>
     <div class="field"><label>NetExec output (.txt)</label><input type="file" name="file" accept=".txt,.log,text/plain" required /></div>
+    <div class="field">
+      <label>Scanned from</label>
+      <select name="vantage">
+        <option value="">Operator box (direct)</option>
+        {% for h in hosts %}<option value="{{ h.id }}">via {{ h.hostname or h.ip }}{% if h.hostname %} ({{ h.ip }}){% endif %}</option>{% endfor %}
+      </select>
+      <span class="muted small">Pick a pivot if you ran this scan tunneled through another host.</span>
+    </div>
     <div class="modal-actions">
       <button type="button" class="secondary" onclick="emClose('import-scan')">Cancel</button>
       <button type="submit">Import</button>

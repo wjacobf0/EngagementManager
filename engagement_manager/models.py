@@ -6,6 +6,8 @@
       |- Credential              -- a username + secret (encrypted at rest)
       |- ScanImport              -- a raw nmap/nxc upload + parsed summary
     HostCredential               -- which credential works on which host, and how
+    Reachability                 -- a reach edge: you get to host X *via* host Y
+                                    (via = null means straight from the operator box)
 """
 from datetime import datetime, timezone
 from enum import Enum
@@ -167,10 +169,40 @@ class Script(SQLModel, table=True):
     host: Optional[Host] = Relationship(back_populates="scripts")
 
 
+class ReachMethod(str, Enum):
+    direct = "direct"        # straight from the operator box, no tunnel
+    ssh = "ssh"              # ssh -L / -D port forward
+    socks = "socks"          # socks proxy (e.g. proxychains over a pivot)
+    chisel = "chisel"
+    ligolo = "ligolo"
+    rdp = "rdp"
+    other = "other"
+
+
+class Reachability(SQLModel, table=True):
+    """How a host was reached: directly, or tunneled through another host.
+
+    `via_host_id` is the pivot you went through; null means you reached it
+    straight from the operator/engagement box. The graph of these edges, rooted
+    at the operator box, is the engagement's network topology.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    engagement_id: int = Field(foreign_key="engagement.id", index=True)
+    host_id: int = Field(foreign_key="host.id", index=True)
+    via_host_id: Optional[int] = Field(default=None, foreign_key="host.id", index=True)
+    method: ReachMethod = Field(default=ReachMethod.direct)
+    port: Optional[int] = None
+    script_id: Optional[int] = Field(default=None, foreign_key="script.id")
+    discovered_by_scan_id: Optional[int] = Field(default=None, foreign_key="scanimport.id")
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class ScanImport(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     engagement_id: int = Field(foreign_key="engagement.id", index=True)
     tool: str
+    vantage_host_id: Optional[int] = Field(default=None, foreign_key="host.id")
     filename: Optional[str] = None
     raw: str
     summary: Optional[str] = None

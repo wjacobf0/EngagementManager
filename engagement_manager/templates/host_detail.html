@@ -73,6 +73,59 @@
 
 <div class="card">
   <div class="card-head">
+    <h3>Reachability</h3>
+    <button type="button" onclick="emShow('add-reach')">+ Add path</button>
+  </div>
+  <table>
+    <thead><tr><th>Reached via</th><th>Method</th><th>Port</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for e in reach_edges %}
+      <tr>
+        <td>{% if e.via_host_id %}<a href="/hosts/{{ e.via_host_id }}">{{ pivot_names.get(e.via_host_id, e.via_host_id) }}</a>{% else %}<span class="badge alive">Operator box (direct)</span>{% endif %}</td>
+        <td>{{ e.method.value }}</td>
+        <td class="mono">{{ e.port or "—" }}</td>
+        <td class="muted">{{ e.notes or "—" }}</td>
+        <td class="right nowrap">
+          <form method="post" action="/reach/{{ e.id }}/delete" onsubmit="return confirm('Remove this reachability path?')">
+            <button class="danger small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No reachability recorded. Imports from a scan set this; add a path manually here, or see the <a href="/topology">Topology</a> map.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<dialog id="add-reach" class="modal">
+  <div class="modal-head"><h3>Add reachability path</h3><button type="button" class="icon" onclick="emClose('add-reach')" aria-label="Close">✕</button></div>
+  <form method="post" action="/hosts/{{ host.id }}/reach">
+    <div class="field">
+      <label>Reached via</label>
+      <select name="via">
+        <option value="">Operator box (direct)</option>
+        {% for c in pivot_choices %}<option value="{{ c.id }}">via {{ c.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="row">
+      <div class="field"><label>Method</label>
+        <select name="method">
+          {% for m in reach_methods %}<option value="{{ m.value }}">{{ m.value }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Port</label><input name="port" type="number" min="1" max="65535" placeholder="1080" /></div>
+    </div>
+    <div class="field"><label>Notes</label><input name="notes" placeholder="socks via chisel on this pivot" /></div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('add-reach')">Cancel</button>
+      <button type="submit">Save path</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="card">
+  <div class="card-head">
     <h3>Open ports / services</h3>
     <button type="button" onclick="emShow('add-service')">+ Add port</button>
   </div>

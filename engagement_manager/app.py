@@ -22,6 +22,9 @@ from .models import (
     Engagement,
     Host,
     HostCredential,
+    Reachability,
+    ReachMethod,
+    ScanImport,
     Script,
     SecretType,
     Service,
@@ -172,6 +175,16 @@ def add_host(
 def delete_host(host_id: int, session: Session = Depends(get_session)):
     host = session.get(Host, host_id)
     if host:
+        # Reach edges have two FKs to host and no ORM cascade, so clear any edge
+        # that points at this host as target or pivot before deleting it.
+        edges = session.exec(
+            select(Reachability).where(
+                (Reachability.host_id == host_id)
+                | (Reachability.via_host_id == host_id)
+            )
+        ).all()
+        for e in edges:
+            session.delete(e)
         session.delete(host)
         session.commit()
     return RedirectResponse("/hosts", status_code=303)
@@ -190,6 +203,21 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
         except ValueError:
             secret = "<decrypt error>"
         cred_rows.append({"link": link, "cred": cred, "secret": secret})
+
+    reach_edges = session.exec(
+        select(Reachability).where(Reachability.host_id == host_id)
+    ).all()
+    pivot_names = {
+        h.id: (h.hostname or h.ip)
+        for h in session.exec(
+            select(Host).where(Host.engagement_id == host.engagement_id)
+        ).all()
+    }
+    pivot_choices = [
+        {"id": hid, "label": name}
+        for hid, name in sorted(pivot_names.items(), key=lambda kv: kv[1])
+        if hid != host_id
+    ]
     return templates.TemplateResponse(
         request,
         "host_detail.html",
@@ -200,8 +228,54 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
             cred_rows=cred_rows,
             secret_types=list(SecretType),
             access_levels=list(AccessLevel),
+            reach_edges=reach_edges,
+            pivot_names=pivot_names,
+            pivot_choices=pivot_choices,
+            reach_methods=list(ReachMethod),
         ),
     )
+
+
+@app.post("/hosts/{host_id}/reach")
+def add_reach(
+    request: Request,
+    host_id: int,
+    via: str = Form(""),
+    method: str = Form("direct"),
+    port: str = Form(""),
+    notes: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host:
+        via_id = int(via) if via.strip().isdigit() else None
+        try:
+            m = ReachMethod(method)
+        except ValueError:
+            m = ReachMethod.other
+        session.add(
+            Reachability(
+                engagement_id=host.engagement_id,
+                host_id=host_id,
+                via_host_id=via_id,
+                method=m,
+                port=int(port) if port.strip().isdigit() else None,
+                notes=notes or None,
+            )
+        )
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.post("/reach/{edge_id}/delete")
+def delete_reach(edge_id: int, session: Session = Depends(get_session)):
+    edge = session.get(Reachability, edge_id)
+    host_id = edge.host_id if edge else None
+    if edge:
+        session.delete(edge)
+        session.commit()
+    target = f"/hosts/{host_id}" if host_id else "/topology"
+    return RedirectResponse(target, status_code=303)
 
 
 # --------------------------------------------------------------------------- #
@@ -529,6 +603,29 @@ def coverage_page(request: Request, session: Session = Depends(get_session)):
     )
 
 
+@app.get("/topology", response_class=HTMLResponse)
+def topology_page(request: Request, session: Session = Depends(get_session)):
+    from .topology import build_topology
+
+    active = _active_engagement(request, session)
+    topo = build_topology(session, active.id) if active else None
+    return templates.TemplateResponse(
+        request, "topology.html", _ctx(request, session, topo=topo)
+    )
+
+
+@app.get("/topology/data")
+def topology_data(request: Request, session: Session = Depends(get_session)):
+    from fastapi.responses import JSONResponse
+
+    from .topology import build_topology, graph_payload
+
+    active = _active_engagement(request, session)
+    if not active:
+        return JSONResponse({"elements": [], "max_depth": 0})
+    return JSONResponse(graph_payload(build_topology(session, active.id)))
+
+
 @app.post("/credentials/{cred_id}/validate")
 def toggle_validated(cred_id: int, session: Session = Depends(get_session)):
     cred = session.get(Credential, cred_id)
@@ -544,17 +641,21 @@ def toggle_validated(cred_id: int, session: Session = Depends(get_session)):
 # --------------------------------------------------------------------------- #
 @app.get("/scans", response_class=HTMLResponse)
 def scans_page(request: Request, session: Session = Depends(get_session)):
-    from .models import ScanImport
-
     active = _active_engagement(request, session)
     scans = []
+    hosts = []
     if active:
         scans = session.exec(
             select(ScanImport)
             .where(ScanImport.engagement_id == active.id)
             .order_by(ScanImport.imported_at.desc())
         ).all()
-    return templates.TemplateResponse(request, "scans.html", _ctx(request, session, scans=scans))
+        hosts = session.exec(
+            select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
+        ).all()
+    return templates.TemplateResponse(
+        request, "scans.html", _ctx(request, session, scans=scans, hosts=hosts)
+    )
 
 
 @app.post("/scans/{tool}")
@@ -562,21 +663,23 @@ async def upload_scan(
     tool: str,
     request: Request,
     file: UploadFile = File(...),
+    vantage: str = Form(""),
     session: Session = Depends(get_session),
 ):
     active = _active_engagement(request, session)
     if active and tool in ("nmap", "nxc"):
         raw = (await file.read()).decode("utf-8", errors="replace")
+        vantage_id = int(vantage) if vantage.strip().isdigit() else None
         try:
             if tool == "nmap":
-                import_nmap(session, active.id, raw, file.filename)
+                import_nmap(session, active.id, raw, file.filename, vantage_id)
             else:
-                import_nxc(session, active.id, raw, file.filename)
+                import_nxc(session, active.id, raw, file.filename, vantage_id)
         except Exception as exc:  # noqa: BLE001 - show parse errors in the UI
             return templates.TemplateResponse(
                 request,
                 "scans.html",
-                _ctx(request, session, scans=[], error=f"Import failed: {exc}"),
+                _ctx(request, session, scans=[], hosts=[], error=f"Import failed: {exc}"),
                 status_code=422,
             )
     return RedirectResponse("/scans", status_code=303)

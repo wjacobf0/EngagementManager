@@ -110,6 +110,28 @@ The engagement is created automatically if the name is new. Re-importing merges
 by IP, so running the same scan twice updates hosts instead of duplicating them.
 NetExec lines ending in `Pwn3d!` are recorded as admin access on that host.
 
+### Topology and pivots
+
+A scan run straight from your box reaches hosts directly; a scan you run after
+tunneling through a foothold reaches the hosts behind it. Tell the importer
+where a scan was run from and it records that reachability for you:
+
+```bash
+# scanned directly from your operator box (the default)
+engagement-manager import nmap acme.xml -e "ACME Internal"
+
+# scanned after tunneling through a pivot (by IP or host id)
+engagement-manager import nmap internal.xml -e "ACME Internal" --from 10.0.0.5
+```
+
+The **Topology** page then draws the reach graph rooted at your operator box,
+laid out by hop count: directly reachable hosts in the first rank, hosts behind
+a pivot in the next, with the pivot marked and each tunnel labeled by method.
+Pivots with no recorded inbound path are attached to the operator with a dashed
+"assumed" edge so nothing behind them disappears. In the web UI the same
+"Scanned from" choice appears on the import dialog, and each host page lists and
+lets you edit how that host is reached.
+
 ### Other commands
 
 ```bash

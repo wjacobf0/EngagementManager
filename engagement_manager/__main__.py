@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 from .config import get_config
 from .database import engine, init_db
 from .ingest import import_nmap, import_nxc
-from .models import Engagement
+from .models import Engagement, Host
 
 
 def _get_or_create_engagement(session: Session, name: str) -> Engagement:
@@ -55,10 +55,31 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
     with Session(engine) as session:
         eng = _get_or_create_engagement(session, args.engagement)
+        vantage_id = _resolve_vantage(session, eng.id, args.via)
+        if args.via and vantage_id is None:
+            print(
+                f"error: no host '{args.via}' in engagement '{eng.name}' to pivot through",
+                file=sys.stderr,
+            )
+            return 1
         importer = import_nmap if args.tool == "nmap" else import_nxc
-        record = importer(session, eng.id, raw, args.file)
-        print(f"[{args.tool}] engagement '{eng.name}': {record.summary}")
+        record = importer(session, eng.id, raw, args.file, vantage_id)
+        via = f" (via host {vantage_id})" if vantage_id else ""
+        print(f"[{args.tool}] engagement '{eng.name}'{via}: {record.summary}")
     return 0
+
+
+def _resolve_vantage(session: Session, engagement_id: int, via: str | None) -> int | None:
+    """Turn a --from value (host id or IP) into a host id within the engagement."""
+    if not via:
+        return None
+    stmt = select(Host).where(Host.engagement_id == engagement_id)
+    if via.isdigit():
+        host = session.exec(stmt.where(Host.id == int(via))).first()
+        if host:
+            return host.id
+    host = session.exec(stmt.where(Host.ip == via)).first()
+    return host.id if host else None
 
 
 def cmd_engagements(_: argparse.Namespace) -> int:
@@ -96,6 +117,10 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("tool", choices=["nmap", "nxc"])
     imp.add_argument("file")
     imp.add_argument("-e", "--engagement", required=True, help="engagement name (created if new)")
+    imp.add_argument(
+        "--from", dest="via", default=None,
+        help="pivot host (IP or host id) this scan was run through; omit for the operator box",
+    )
     imp.set_defaults(func=cmd_import)
 
     sub.add_parser("engagements", help="list engagements").set_defaults(func=cmd_engagements)

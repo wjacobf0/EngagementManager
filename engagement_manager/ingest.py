@@ -15,6 +15,8 @@ from .models import (
     Host,
     HostCredential,
     HostStatus,
+    Reachability,
+    ReachMethod,
     ScanImport,
     SecretType,
     Service,
@@ -35,6 +37,41 @@ def _get_or_create_host(session: Session, engagement_id: int, ip: str) -> tuple[
     return host, True
 
 
+def _record_reach(
+    session: Session,
+    engagement_id: int,
+    host_id: int,
+    vantage_host_id: int | None,
+    scan_id: int | None,
+) -> None:
+    """Ensure a reach edge from the scan's vantage to this host exists.
+
+    A host scanned from the operator box (vantage None) is reachable directly; a
+    host scanned from a pivot is reachable through it. We don't self-link a pivot
+    to itself, and we don't duplicate an edge that's already recorded.
+    """
+    if host_id == vantage_host_id:
+        return
+    existing = session.exec(
+        select(Reachability).where(
+            Reachability.engagement_id == engagement_id,
+            Reachability.host_id == host_id,
+            Reachability.via_host_id == vantage_host_id,
+        )
+    ).first()
+    if existing:
+        return
+    session.add(
+        Reachability(
+            engagement_id=engagement_id,
+            host_id=host_id,
+            via_host_id=vantage_host_id,
+            method=ReachMethod.direct if vantage_host_id is None else ReachMethod.other,
+            discovered_by_scan_id=scan_id,
+        )
+    )
+
+
 def _guess_secret_type(secret: str) -> SecretType:
     if ":" in secret and all(len(p) == 32 for p in secret.split(":")[:2]):
         return SecretType.ntlm
@@ -44,14 +81,20 @@ def _guess_secret_type(secret: str) -> SecretType:
 
 
 def import_nmap(
-    session: Session, engagement_id: int, raw: str, filename: str | None = None
+    session: Session,
+    engagement_id: int,
+    raw: str,
+    filename: str | None = None,
+    vantage_host_id: int | None = None,
 ) -> ScanImport:
     parsed_hosts = parse_nmap_xml(raw)
     created = updated = 0
+    touched: list[int] = []
     for ph in parsed_hosts:
         host, is_new = _get_or_create_host(session, engagement_id, ph.ip)
         created += is_new
         updated += not is_new
+        touched.append(host.id)
         if ph.hostname:
             host.hostname = ph.hostname
         if ph.os:
@@ -81,6 +124,7 @@ def import_nmap(
     record = ScanImport(
         engagement_id=engagement_id,
         tool="nmap",
+        vantage_host_id=vantage_host_id,
         filename=filename,
         raw=raw,
         summary=summary,
@@ -88,20 +132,29 @@ def import_nmap(
         hosts_updated=updated,
     )
     session.add(record)
+    session.flush()
+    for host_id in touched:
+        _record_reach(session, engagement_id, host_id, vantage_host_id, record.id)
     session.commit()
     session.refresh(record)
     return record
 
 
 def import_nxc(
-    session: Session, engagement_id: int, raw: str, filename: str | None = None
+    session: Session,
+    engagement_id: int,
+    raw: str,
+    filename: str | None = None,
+    vantage_host_id: int | None = None,
 ) -> ScanImport:
     parsed = parse_nxc_output(raw)
     created = updated = 0
+    touched: list[int] = []
     for ip, ph in parsed.hosts.items():
         host, is_new = _get_or_create_host(session, engagement_id, ip)
         created += is_new
         updated += not is_new
+        touched.append(host.id)
         if ph.hostname:
             host.hostname = ph.hostname
         if ph.domain:
@@ -154,6 +207,7 @@ def import_nxc(
     record = ScanImport(
         engagement_id=engagement_id,
         tool="nxc",
+        vantage_host_id=vantage_host_id,
         filename=filename,
         raw=raw,
         summary=summary,
@@ -161,6 +215,9 @@ def import_nxc(
         hosts_updated=updated,
     )
     session.add(record)
+    session.flush()
+    for host_id in touched:
+        _record_reach(session, engagement_id, host_id, vantage_host_id, record.id)
     session.commit()
     session.refresh(record)
     return record

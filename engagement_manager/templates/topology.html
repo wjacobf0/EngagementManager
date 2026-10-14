@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="topbar">
+  <h1>Topology</h1>
+  <div class="right muted small">Reach graph rooted at your operator box · tunnel depth = hops</div>
+</div>
+
+{% if not active %}
+  <div class="card muted">Create an engagement first.</div>
+{% elif not topo or not topo.nodes %}
+  <div class="card muted">
+    No reachability recorded yet. Import a scan (the “Scanned from” field on
+    <a href="/scans">Scan Imports</a> sets the pivot), or add a path on a host’s page.
+  </div>
+{% else %}
+
+<div class="legend" style="margin-bottom:12px">
+  <span><span class="dot" style="background:var(--muted)"></span> Operator box</span>
+  <span><span class="dot" style="background:var(--accent)"></span> Pivot (others reached through it)</span>
+  <span><span class="dot admin"></span> Admin / DA proven</span>
+  <span><span class="dot user"></span> User proven</span>
+  <span><span class="dot na"></span> Discovered only</span>
+</div>
+
+<div class="card" style="padding:0">
+  <div id="graph" style="height:560px;width:100%;border-radius:10px"></div>
+</div>
+
+{% if topo.orphans %}
+<div class="card">
+  <h3>Not placed on the map</h3>
+  <p class="muted small">These hosts exist but have no reachability path yet. Set one on the host page or re-import the scan with a “Scanned from” value.</p>
+  <p>
+    {% for h in topo.orphans %}<a href="/hosts/{{ h.id }}" class="chip">{{ h.hostname or h.ip }}</a> {% endfor %}
+  </p>
+</div>
+{% endif %}
+
+<script src="/static/cytoscape.min.js"></script>
+<script>
+  const css = getComputedStyle(document.documentElement);
+  const C = {
+    bg:     css.getPropertyValue('--bg').trim(),
+    panel2: css.getPropertyValue('--panel-2').trim(),
+    border: css.getPropertyValue('--border').trim(),
+    text:   css.getPropertyValue('--text').trim(),
+    muted:  css.getPropertyValue('--muted').trim(),
+    accent: css.getPropertyValue('--accent').trim(),
+    green:  css.getPropertyValue('--green').trim(),
+    red:    css.getPropertyValue('--red').trim(),
+  };
+  // Node fill by best access proven; discovered-only is hollow-ish.
+  function accessColor(a){
+    if (a === 'admin' || a === 'domain_admin') return C.red;
+    if (a === 'user') return C.accent;
+    return C.panel2;
+  }
+
+  fetch('/topology/data').then(r => r.json()).then(data => {
+    const cy = cytoscape({
+      container: document.getElementById('graph'),
+      elements: data.elements,
+      wheelSensitivity: 0.2,
+      style: [
+        { selector: 'node', style: {
+            'label': 'data(label)', 'color': C.text, 'font-size': 12,
+            'text-valign': 'bottom', 'text-margin-y': 6,
+            'background-color': ele => ele.data('kind') === 'operator' ? C.muted : accessColor(ele.data('access')),
+            'border-width': 2, 'border-color': C.border,
+            'width': 34, 'height': 34,
+        }},
+        { selector: 'node[kind = "operator"]', style: {
+            'shape': 'round-rectangle', 'width': 120, 'height': 40,
+            'font-weight': 'bold', 'text-valign': 'center', 'text-margin-y': 0,
+            'color': C.text, 'border-color': C.muted,
+        }},
+        { selector: 'node[kind = "pivot"]', style: {
+            'shape': 'round-diamond', 'width': 46, 'height': 46,
+            'border-color': C.accent, 'border-width': 3,
+        }},
+        { selector: 'edge', style: {
+            'width': 2, 'line-color': C.border,
+            'target-arrow-color': C.border, 'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': ele => ele.data('method') === 'direct' ? '' : ele.data('method'),
+            'font-size': 10, 'color': C.muted,
+            'text-background-color': C.bg, 'text-background-opacity': 1,
+            'text-background-padding': 2,
+        }},
+        { selector: 'edge[?assumed]', style: {
+            'line-style': 'dashed', 'line-color': C.muted,
+            'target-arrow-color': C.muted,
+        }},
+      ],
+      layout: {
+        name: 'breadthfirst', directed: true, roots: ['operator'],
+        spacingFactor: 1.15, padding: 24,
+      },
+    });
+    // Click a host node to open its detail page.
+    cy.on('tap', 'node[kind != "operator"]', evt => {
+      window.location.href = '/hosts/' + evt.target.id();
+    });
+  });
+</script>
+{% endif %}
+{% endblock %}
