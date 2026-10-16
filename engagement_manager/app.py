@@ -3,7 +3,6 @@
 Runs as a single local process backed by SQLite. The active engagement is
 remembered in a cookie so links and forms stay clean.
 """
-import base64
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +23,7 @@ from .models import (
     Engagement,
     Evidence,
     EvidenceKind,
+    Exploit,
     Finding,
     Host,
     HostCredential,
@@ -302,12 +302,108 @@ def get_evidence(evidence_id: int, session: Session = Depends(get_session)):
     return Response(content=ev.data, media_type=ev.content_type)
 
 
+_IMG_EXT = {
+    "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+    "image/gif": "gif", "image/webp": "webp", "image/bmp": "bmp",
+    "image/svg+xml": "svg", "image/tiff": "tif",
+}
+
+
+def _evidence_filename(ev: Evidence) -> str:
+    """A sensible download name: the uploaded name, else <ip>_<kind>.<ext>."""
+    if ev.filename and ev.filename.strip():
+        return ev.filename.strip()
+    ip = (ev.host.ip if ev.host else "host").replace("/", "_").replace(":", "_")
+    ext = _IMG_EXT.get(ev.content_type, "img")
+    return f"{ip}_{ev.kind.value}_{ev.id}.{ext}"
+
+
+@app.get("/evidence/{evidence_id}/download")
+def download_evidence(evidence_id: int, session: Session = Depends(get_session)):
+    ev = session.get(Evidence, evidence_id)
+    if not ev:
+        return RedirectResponse("/hosts", status_code=303)
+    return Response(
+        content=ev.data,
+        media_type=ev.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{_evidence_filename(ev)}"'},
+    )
+
+
 @app.post("/evidence/{evidence_id}/delete")
 def delete_evidence(evidence_id: int, session: Session = Depends(get_session)):
     ev = session.get(Evidence, evidence_id)
     host_id = ev.host_id if ev else None
     if ev:
         session.delete(ev)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}" if host_id else "/hosts", status_code=303)
+
+
+@app.post("/hosts/{host_id}/exploits")
+def add_exploit(
+    host_id: int,
+    title: str = Form(...),
+    url: str = Form(""),
+    modified: str = Form(""),
+    code: str = Form(""),
+    shellcode_cmd: str = Form(""),
+    changes: str = Form(""),
+    explanation: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host and title.strip():
+        session.add(
+            Exploit(
+                host_id=host_id,
+                title=title.strip(),
+                url=url.strip() or None,
+                modified=bool(modified),
+                code=code or None,
+                shellcode_cmd=shellcode_cmd or None,
+                changes=changes or None,
+                explanation=explanation or None,
+            )
+        )
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.post("/exploits/{exploit_id}/edit")
+def edit_exploit(
+    exploit_id: int,
+    title: str = Form(...),
+    url: str = Form(""),
+    modified: str = Form(""),
+    code: str = Form(""),
+    shellcode_cmd: str = Form(""),
+    changes: str = Form(""),
+    explanation: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    exp = session.get(Exploit, exploit_id)
+    if not exp:
+        return RedirectResponse("/hosts", status_code=303)
+    if title.strip():
+        exp.title = title.strip()
+    exp.url = url.strip() or None
+    exp.modified = bool(modified)
+    exp.code = code or None
+    exp.shellcode_cmd = shellcode_cmd or None
+    exp.changes = changes or None
+    exp.explanation = explanation or None
+    session.add(exp)
+    session.commit()
+    return RedirectResponse(f"/hosts/{exp.host_id}", status_code=303)
+
+
+@app.post("/exploits/{exploit_id}/delete")
+def delete_exploit(exploit_id: int, session: Session = Depends(get_session)):
+    exp = session.get(Exploit, exploit_id)
+    host_id = exp.host_id if exp else None
+    if exp:
+        session.delete(exp)
         session.commit()
     return RedirectResponse(f"/hosts/{host_id}" if host_id else "/hosts", status_code=303)
 
@@ -817,145 +913,6 @@ def delete_finding(finding_id: int, session: Session = Depends(get_session)):
         session.delete(finding)
         session.commit()
     return RedirectResponse("/findings", status_code=303)
-
-
-# --------------------------------------------------------------------------- #
-# Report
-# --------------------------------------------------------------------------- #
-def _report_context(session: Session, active: Engagement) -> dict:
-    hosts = session.exec(
-        select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
-    ).all()
-    creds = session.exec(
-        select(Credential)
-        .where(Credential.engagement_id == active.id)
-        .order_by(Credential.domain, Credential.username)
-    ).all()
-    cred_rows = []
-    for c in creds:
-        try:
-            secret = decrypt_secret(c.secret_encrypted)
-        except ValueError:
-            secret = "<decrypt error>"
-        cred_rows.append({"cred": c, "secret": secret})
-    host_names = {h.id: (h.hostname or h.ip) for h in hosts}
-    owned = [h for h in hosts if h.proof_flag or h.rooted]
-    # Inline each proof screenshot as a data URI so the printed PDF is self-contained.
-    evidence: dict[int, list[dict]] = {}
-    for h in hosts:
-        shots = []
-        for e in sorted(h.evidence, key=lambda e: e.created_at):
-            b64 = base64.b64encode(e.data).decode("ascii")
-            shots.append(
-                {
-                    "kind": e.kind.value,
-                    "caption": e.caption,
-                    "filename": e.filename,
-                    "uri": f"data:{e.content_type};base64,{b64}",
-                }
-            )
-        evidence[h.id] = shots
-    return {
-        "eng": active,
-        "hosts": hosts,
-        "cred_rows": cred_rows,
-        "findings": _findings_for(session, active.id),
-        "host_names": host_names,
-        "evidence": evidence,
-        "generated_at": _utcnow(),
-        "owned_count": len(owned),
-    }
-
-
-@app.get("/report", response_class=HTMLResponse)
-def report_page(request: Request, session: Session = Depends(get_session)):
-    active = _active_engagement(request, session)
-    ctx = _report_context(session, active) if active else {}
-    return templates.TemplateResponse(
-        request, "report.html", _ctx(request, session, report=ctx)
-    )
-
-
-@app.get("/report.md")
-def report_markdown(request: Request, session: Session = Depends(get_session)):
-    active = _active_engagement(request, session)
-    if not active:
-        return Response("No active engagement.", media_type="text/plain")
-    md = _render_markdown_report(_report_context(session, active))
-    fname = "".join(c if c.isalnum() or c in "-_" else "-" for c in active.name).strip("-")
-    return Response(
-        content=md,
-        media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{fname or "report"}.md"'},
-    )
-
-
-def _render_markdown_report(ctx: dict) -> str:
-    eng = ctx["eng"]
-    out: list[str] = []
-    out.append(f"# {eng.name} — Engagement Report")
-    if eng.client:
-        out.append(f"\n**Client:** {eng.client}")
-    out.append(f"\n**Status:** {eng.status.value}  ")
-    out.append(f"**Generated:** {ctx['generated_at']:%Y-%m-%d %H:%M UTC}")
-    if eng.scope:
-        out.append("\n## Scope\n\n```\n" + eng.scope + "\n```")
-
-    out.append("\n## Summary\n")
-    out.append(f"- Hosts: {len(ctx['hosts'])}")
-    out.append(f"- Hosts rooted / proof captured: {ctx['owned_count']}")
-    out.append(f"- Credentials recovered: {len(ctx['cred_rows'])}")
-    out.append(f"- Findings: {len(ctx['findings'])}")
-
-    out.append("\n## Hosts\n")
-    for h in ctx["hosts"]:
-        name = f"{h.ip}" + (f" ({h.hostname})" if h.hostname else "")
-        out.append(f"\n### {name}\n")
-        meta = [f"OS: {h.os or '—'}", f"Domain: {h.domain or '—'}", f"Status: {h.status.value}"]
-        out.append(" · ".join(meta))
-        prog = []
-        prog.append(("✔" if h.foothold else "✘") + " foothold")
-        prog.append(("✔" if h.local_flag else "✘") + " local.txt")
-        prog.append(("✔" if h.rooted else "✘") + " privesc")
-        prog.append(("✔" if h.proof_flag else "✘") + " proof.txt")
-        out.append("\nProgress: " + ", ".join(prog))
-        if h.local_flag:
-            out.append(f"\n- local.txt: `{h.local_flag}`")
-        if h.proof_flag:
-            out.append(f"- proof.txt: `{h.proof_flag}`")
-        for e in ctx["evidence"].get(h.id, []):
-            label = e["caption"] or e["filename"] or "screenshot"
-            out.append(f"- screenshot ({e['kind']}): {label} — see HTML report / {e['filename'] or 'attachment'}")
-        ports = sorted(
-            (s for s in h.services if s.state == "open"), key=lambda s: s.port
-        )
-        if ports:
-            out.append("\n| Port | Service | Product / version |")
-            out.append("| --- | --- | --- |")
-            for s in ports:
-                pv = " ".join(x for x in (s.product, s.version) if x) or "—"
-                out.append(f"| {s.port}/{s.protocol} | {s.service_name or '—'} | {pv} |")
-
-    if ctx["cred_rows"]:
-        out.append("\n## Credentials recovered\n")
-        out.append("| Account | Type | Secret |")
-        out.append("| --- | --- | --- |")
-        for r in ctx["cred_rows"]:
-            c = r["cred"]
-            acct = (f"{c.domain}\\" if c.domain else "") + c.username
-            out.append(f"| {acct} | {c.secret_type.value} | `{r['secret']}` |")
-
-    if ctx["findings"]:
-        out.append("\n## Findings\n")
-        for f in ctx["findings"]:
-            loc = f" — {ctx['host_names'].get(f.host_id)}" if f.host_id else ""
-            out.append(f"\n### [{f.severity.value.upper()}] {f.title}{loc}\n")
-            if f.description:
-                out.append(f.description)
-            if f.steps:
-                out.append("\n**Steps:**\n\n" + f.steps)
-
-    return "\n".join(out) + "\n"
 
 
 # --------------------------------------------------------------------------- #

@@ -54,6 +54,23 @@
 </form>
 {% endmacro %}
 
+{% macro exploit_form(action, close_id, e=None) %}
+<form method="post" action="{{ action }}">
+  <div class="field"><label>Title</label><input name="title" value="{{ e.title if e else '' }}" placeholder="CVE-2021-34527 PrintNightmare" required /></div>
+  <div class="field"><label>Source / original exploit URL</label><input name="url" value="{{ e.url or '' if e else '' }}" placeholder="https://www.exploit-db.com/exploits/..." /></div>
+  <label class="check"><input type="checkbox" name="modified" value="1" {{ 'checked' if e and e.modified else '' }} /> I modified this exploit</label>
+  <p class="muted small">If unmodified, the URL above is all the report needs. Fill in the rest only if you changed the exploit.</p>
+  <div class="field"><label>Shellcode generation command (if applicable)</label><input class="mono" name="shellcode_cmd" value="{{ e.shellcode_cmd or '' if e else '' }}" placeholder="msfvenom -p windows/x64/shell_reverse_tcp LHOST=... -f python" /></div>
+  <div class="field"><label>Highlighted changes</label><textarea name="changes" rows="4" class="mono" placeholder="Line 42: changed RHOST to target IP&#10;Line 88: replaced shellcode with msfvenom output above">{{ e.changes or '' if e else '' }}</textarea></div>
+  <div class="field"><label>Why these changes were made</label><textarea name="explanation" rows="3" placeholder="Original targeted a different OS build; offsets adjusted for 17763.">{{ e.explanation or '' if e else '' }}</textarea></div>
+  <div class="field"><label>Modified exploit code</label><textarea name="code" rows="10" class="mono" placeholder="Paste the full modified exploit here.">{{ e.code or '' if e else '' }}</textarea></div>
+  <div class="modal-actions">
+    <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
+    <button type="submit">Save exploit</button>
+  </div>
+</form>
+{% endmacro %}
+
 {% block body %}
 {% set services = host.services | sort(attribute='port') %}
 <div class="topbar">
@@ -86,7 +103,7 @@
   </form>
 
   <h4>Proof screenshots</h4>
-  <p class="muted small">The OSCP requires each flag to be shown in a screenshot that also shows the target IP (<code>ipconfig</code> / <code>ip addr</code>) in the same frame. Attach them here; they're embedded in the <a href="/report">Report</a>.</p>
+  <p class="muted small">The OSCP requires each flag to be shown in a screenshot that also shows the target IP (<code>ipconfig</code> / <code>ip addr</code>) in the same frame. Attach them here; they're stored in the database and can be downloaded later.</p>
   {% if host.evidence %}
   <div class="shots">
     {% for e in host.evidence | sort(attribute='created_at') %}
@@ -95,6 +112,7 @@
       <figcaption>
         <span class="badge {{ 'alive' if e.kind.value in ('local','proof') else 'unknown' }}">{{ e.kind.value }}</span>
         {% if e.caption %}<span class="muted small">{{ e.caption }}</span>{% endif %}
+        <a class="small" href="/evidence/{{ e.id }}/download">download</a>
         <form method="post" action="/evidence/{{ e.id }}/delete" onsubmit="return confirm('Delete this screenshot?')">
           <button class="link small danger-link" type="submit">remove</button>
         </form>
@@ -247,6 +265,50 @@
 <dialog id="cred-edit-{{ r.link.id }}" class="modal">
   <div class="modal-head"><h3>Edit credential</h3><button type="button" class="icon" onclick="emClose('cred-edit-{{ r.link.id }}')" aria-label="Close">✕</button></div>
   {{ cred_form('/host-credentials/' ~ r.link.id ~ '/edit', 'cred-edit-' ~ r.link.id, secret_types, access_levels, r.link, r.cred, r.secret) }}
+</dialog>
+{% endfor %}
+
+<div class="card">
+  <div class="card-head">
+    <h3>Exploits</h3>
+    <button type="button" onclick="emShow('add-exploit')">+ Add exploit</button>
+  </div>
+
+  {% for e in host.exploits | sort(attribute='created_at') %}
+  <details class="script">
+    <summary>
+      <span class="s-name">{{ e.title }}</span>
+      <span class="badge {{ 'planning' if e.modified else 'unknown' }}">{{ 'modified' if e.modified else 'unmodified' }}</span>
+      {% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="break">{{ e.url }}</a>{% endif %}
+      <span class="s-actions">
+        <button class="link small" type="button" onclick="event.stopPropagation(); emShow('exp-edit-{{ e.id }}')">Edit</button>
+      </span>
+    </summary>
+    {% if e.modified %}
+      {% if e.shellcode_cmd %}<div class="desc"><b>Shellcode command</b></div><pre class="mono wrap code">{{ e.shellcode_cmd }}</pre>{% endif %}
+      {% if e.changes %}<div class="desc"><b>Changes</b></div><pre class="mono wrap code">{{ e.changes }}</pre>{% endif %}
+      {% if e.explanation %}<div class="desc"><b>Why</b> — {{ e.explanation }}</div>{% endif %}
+      {% if e.code %}<div class="desc"><b>Modified code</b></div><pre class="mono wrap code">{{ e.code }}</pre>{% endif %}
+    {% else %}
+      <p class="desc muted" style="margin:0 12px 12px;">Unmodified — only the source URL is recorded, per OSCP report rules.</p>
+    {% endif %}
+    <form method="post" action="/exploits/{{ e.id }}/delete" onsubmit="return confirm('Delete exploit &quot;{{ e.title }}&quot;?')">
+      <button class="danger small" type="submit">Delete</button>
+    </form>
+  </details>
+  {% else %}
+  <p class="muted">No exploits recorded.</p>
+  {% endfor %}
+</div>
+
+<dialog id="add-exploit" class="modal">
+  <div class="modal-head"><h3>Add exploit</h3><button type="button" class="icon" onclick="emClose('add-exploit')" aria-label="Close">✕</button></div>
+  {{ exploit_form('/hosts/' ~ host.id ~ '/exploits', 'add-exploit') }}
+</dialog>
+{% for e in host.exploits %}
+<dialog id="exp-edit-{{ e.id }}" class="modal">
+  <div class="modal-head"><h3>Edit exploit</h3><button type="button" class="icon" onclick="emClose('exp-edit-{{ e.id }}')" aria-label="Close">✕</button></div>
+  {{ exploit_form('/exploits/' ~ e.id ~ '/edit', 'exp-edit-' ~ e.id, e) }}
 </dialog>
 {% endfor %}
 

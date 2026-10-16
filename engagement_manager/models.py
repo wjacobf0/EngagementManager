@@ -129,6 +129,10 @@ class Host(SQLModel, table=True):
         back_populates="host",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    exploits: list["Exploit"] = Relationship(
+        back_populates="host",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class Service(SQLModel, table=True):
@@ -190,6 +194,28 @@ class Script(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
     host: Optional[Host] = Relationship(back_populates="scripts")
+
+
+class Exploit(SQLModel, table=True):
+    """An exploit used against a host, documented to OSCP report standard.
+
+    Unmodified exploit  -> record only the title and the source `url`.
+    Modified exploit     -> also record the modified `code`, the `shellcode_cmd`
+    used to generate any shellcode, the `changes` made (highlighted), and the
+    `explanation` of why. The report renders the two cases accordingly.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    host_id: int = Field(foreign_key="host.id", index=True)
+    title: str
+    url: Optional[str] = None       # source / original exploit location
+    modified: bool = Field(default=False)
+    code: Optional[str] = None      # modified exploit code (only if modified)
+    shellcode_cmd: Optional[str] = None  # command used to generate shellcode
+    changes: Optional[str] = None   # highlighted changes made
+    explanation: Optional[str] = None    # why those changes were made
+    created_at: datetime = Field(default_factory=_utcnow)
+
+    host: Optional["Host"] = Relationship(back_populates="exploits")
 
 
 class EvidenceKind(str, Enum):

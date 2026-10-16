@@ -2,9 +2,9 @@
 
 A local, **Python-only** tool for keeping track of a penetration test: hosts,
 services, users, credentials (passwords and hashes), per-host progress
-(foothold / local.txt / privesc / proof.txt), findings, and the output of
-`nmap` and NetExec (`nxc`) scans — with a one-click printable report that pulls
-it all together. No Node, no Docker, no database server. It runs on
+(foothold / local.txt / privesc / proof.txt), proof screenshots, exploits,
+findings, and the output of `nmap` and NetExec (`nxc`) scans. No Node, no
+Docker, no database server. It runs on
 Kali or Windows with a single `pipx install` and one command, stores everything
 in a local SQLite file, and opens a web UI in your browser.
 
@@ -177,7 +177,7 @@ makes stored secrets unrecoverable. To move an engagement to another machine
 
 `engagement-manager where` prints the paths in use on either platform.
 
-## Progress, findings, and the report
+## Progress, findings, and exploits
 
 Each host page has a **Progress** panel for the four things the OSCP scores:
 foothold (a shell), the `local.txt` user flag, privilege escalation, and the
@@ -189,13 +189,17 @@ The OSCP also requires each flag to be shown in a **screenshot** that includes
 the target's IP (`ipconfig` / `ip addr`) in the same frame — the flag string
 alone isn't accepted. Attach those screenshots to the host from the Progress
 panel. They're stored inside the database (so they travel with the two portable
-files, not a separate folder) and embedded directly in the report.
+files, not a separate folder) and can be downloaded again at any time.
+
+Each host also has an **Exploits** section that documents what you ran to the
+OSCP's standard: for an unmodified exploit it records just the source URL, and
+for a modified one it captures the modified code, the original URL, the command
+used to generate any shellcode, the highlighted changes, and why you made them.
 
 The **Findings** page records vulnerabilities (title, severity, optional host,
-impact, and reproduction steps). Everything — scope, per-host progress and open
-ports, recovered credentials, and findings — rolls up on the **Report** page,
-which prints to PDF straight from the browser or downloads as Markdown at
-`/report.md` for pasting into your own template.
+impact, and reproduction steps). All of this — per-host progress, open ports,
+proof screenshots, exploits, recovered credentials, and findings — is kept in
+one place so you can pull it into your own report template.
 
 ## Data model
 
@@ -204,6 +208,7 @@ Engagement                   one assessment; scopes everything below
   Host                       a target computer (IP, hostname, OS, domain, tags)
     Service                  an open port / service on that host
     Evidence                 a proof screenshot (image bytes stored in the db)
+    Exploit                  an exploit used (source URL; modified code + changes)
                              + OSCP progress: foothold, local_flag, rooted, proof_flag
   Credential                 username + secret (Fernet-encrypted at rest)
   Finding                    a vulnerability (severity, impact, steps), optionally per-host
