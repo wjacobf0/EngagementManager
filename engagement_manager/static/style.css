@@ -23,7 +23,7 @@ code { font-family:var(--mono); background:var(--panel-2); padding:1px 6px; bord
 .sidebar a.active, .sidebar a:hover { background:var(--panel-2); }
 .sidebar .spacer { flex:1; }
 
-.main { flex:1; padding:24px 32px; max-width:1150px; margin:0 auto; width:100%; }
+.main { flex:1; padding:28px 56px; max-width:1600px; margin:0 auto; width:100%; }
 .topbar { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
 .topbar h1 { margin:0; font-size:20px; }
 

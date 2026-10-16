@@ -22,8 +22,12 @@
   <span><span class="dot na"></span> Discovered only</span>
 </div>
 
+<div class="row" style="justify-content:flex-end;margin-bottom:8px">
+  <button type="button" class="secondary small" onclick="emResetTopology()">Reset layout</button>
+</div>
+
 <div class="card" style="padding:0">
-  <div id="graph" style="height:560px;width:100%;border-radius:10px"></div>
+  <div id="graph" style="height:820px;width:100%;border-radius:10px"></div>
 </div>
 
 {% if topo.orphans %}
@@ -56,8 +60,20 @@
     return C.panel2;
   }
 
+  // Shared layout options, reused by the initial render and the Reset button.
+  const LAYOUT = { name: 'breadthfirst', directed: true, roots: ['operator'],
+    spacingFactor: 1.15, padding: 24 };
+  let cyRef = null;
+
+  // Re-run the layout and recenter — use when dragging has messed up the graph.
+  function emResetTopology(){
+    if (!cyRef) return;
+    cyRef.layout(LAYOUT).run();
+    cyRef.fit(undefined, 24);
+  }
+
   fetch('/topology/data').then(r => r.json()).then(data => {
-    const cy = cytoscape({
+    const cy = cyRef = cytoscape({
       container: document.getElementById('graph'),
       elements: data.elements,
       wheelSensitivity: 0.2,
@@ -92,10 +108,7 @@
             'target-arrow-color': C.muted,
         }},
       ],
-      layout: {
-        name: 'breadthfirst', directed: true, roots: ['operator'],
-        spacingFactor: 1.15, padding: 24,
-      },
+      layout: LAYOUT,
     });
     // Click a host node to open its detail page.
     cy.on('tap', 'node[kind != "operator"]', evt => {
