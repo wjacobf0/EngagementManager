@@ -89,6 +89,14 @@
 </div>
 
 <div class="card">
+  <h3>Notes</h3>
+  <form method="post" action="/hosts/{{ host.id }}/notes">
+    <div class="field"><textarea name="notes" rows="6" placeholder="Enumeration notes, creds tried, privesc paths, anything worth remembering for this host.">{{ host.notes or '' }}</textarea></div>
+    <div class="modal-actions"><button type="submit">Save notes</button></div>
+  </form>
+</div>
+
+<div class="card">
   <h3>Progress</h3>
   <form method="post" action="/hosts/{{ host.id }}/progress">
     <div class="progress-grid">

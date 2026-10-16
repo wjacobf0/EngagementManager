@@ -243,6 +243,20 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
     )
 
 
+@app.post("/hosts/{host_id}/notes")
+def update_host_notes(
+    host_id: int,
+    notes: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host:
+        host.notes = notes.strip() or None
+        session.add(host)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
 @app.post("/hosts/{host_id}/progress")
 def update_progress(
     host_id: int,
