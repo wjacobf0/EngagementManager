@@ -15,17 +15,84 @@
   <div class="stat"><div class="n">{{ cov.hosts | length }}</div><div class="l">Hosts</div></div>
 </div>
 
+<!-- Gaps to close: the action list comes first — it's what you act on. -->
+<div class="card">
+  <h3>Gaps to close</h3>
+  {% if cov.untested_count == 0 and cov.partial_count == 0 %}
+    <p class="muted">No gaps. Every credential has been tried on every protocol it can reach.</p>
+  {% else %}
+  <p class="muted small">
+    Every credential that still has somewhere to go. <b>Never tried</b> means the credential has
+    never been attempted against that host; <b>Partial</b> means it worked or was tried, but the
+    host exposes more auth protocols you haven't used yet. The command is a starting point — fill
+    in the secret (it's on the Credentials page).
+  </p>
+  <div class="table-wrap">
+    <table class="gaps">
+      <thead>
+        <tr>
+          <th>Credential</th>
+          <th>Target</th>
+          <th>Status</th>
+          <th>Protocols to try</th>
+          <th>Suggested command</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cov.creds %}
+          {% set is_hash = c.secret_type.value in ['ntlm', 'nt_hash', 'lm_hash'] %}
+          {% set secflag = '-H' if is_hash else '-p' %}
+          {% for g in cov.gaps[c.id] %}
+          <tr>
+            <td class="mono gap-cred">
+              {% if c.domain %}{{ c.domain }}\{% endif %}{{ c.username }}
+              <span class="muted small">{{ c.secret_type.value }}</span>
+            </td>
+            <td class="mono">
+              {{ g.host.ip }}
+              {% if g.host.hostname %}<span class="muted small">{{ g.host.hostname }}</span>{% endif %}
+            </td>
+            <td>
+              {% if g.untested %}
+                <span class="badge gap">never tried</span>
+              {% else %}
+                <span class="badge partial">partial</span>
+              {% endif %}
+            </td>
+            <td class="protos">
+              {% for p in g.untried %}<span class="proto">{{ p }}</span>{% endfor %}
+            </td>
+            <td>
+              {% if g.untried %}
+              <code class="cmd">nxc {{ g.untried[0] }} {{ g.host.ip }} -u {{ c.username }}{% if c.domain %} -d {{ c.domain }}{% endif %} {{ secflag }} '&lt;secret&gt;'</code>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Matrix: the dense overview, for when you want the whole board at a glance. -->
 <div class="card">
   <div class="card-head">
     <h3>Matrix</h3>
-    <span class="legend">
-      <span class="dot admin"></span>admin
-      <span class="dot user"></span>user
-      <span class="dot fail"></span>failed
-      <span class="dot gap"></span>not tried
-      <span class="dot na"></span>n/a
-      <span class="muted small">· <b>+</b> = some protocols still untried</span>
-    </span>
+  </div>
+  <p class="muted small">
+    Rows are credentials, columns are hosts. Each cell is the best result so far; a trailing
+    <b class="plus">+</b> means the host exposes protocols this credential hasn't been tried on yet.
+    Hover any cell for which protocols were tried.
+  </p>
+  <div class="legend">
+    <span class="key"><span class="cell admin">A</span> admin</span>
+    <span class="key"><span class="cell user">u</span> user</span>
+    <span class="key"><span class="cell fail">✗</span> failed</span>
+    <span class="key"><span class="cell gap">·</span> not tried</span>
+    <span class="key"><span class="cell na">–</span> n/a</span>
+    <span class="key"><b class="plus">+</b> protocols left</span>
   </div>
   <div class="table-wrap">
     <table class="matrix">
@@ -55,7 +122,7 @@
             {%- elif cell.status == 'fail' -%}✗
             {%- elif cell.status == 'gap' -%}·
             {%- else -%}–{%- endif -%}
-            {%- if cell.partial %}<b>+</b>{% endif -%}
+            {%- if cell.partial %}<b class="plus">+</b>{% endif -%}
           </td>
           {% endfor %}
         </tr>
@@ -63,32 +130,6 @@
       </tbody>
     </table>
   </div>
-</div>
-
-<div class="card">
-  <h3>Gaps to close</h3>
-  {% set any_gap = cov.gaps.values() | selectattr('0') | list %}
-  {% if cov.untested_count == 0 and cov.partial_count == 0 %}
-    <p class="muted">No gaps. Every credential has been tried on every protocol it can reach.</p>
-  {% else %}
-    {% for c in cov.creds %}
-      {% if cov.gaps[c.id] %}
-      <div class="gap-row">
-        <div class="mono gap-cred">{% if c.domain %}{{ c.domain }}\{% endif %}{{ c.username }}
-          <span class="muted small">({{ c.secret_type.value }})</span>
-        </div>
-        <div class="gap-items">
-          {% for g in cov.gaps[c.id] %}
-          <span class="chip {{ 'untested' if g.untested else 'partial' }}"
-                title="{{ 'never tried' if g.untested else 'tried, but these protocols remain' }}">
-            {{ g.host.ip }}{% if g.untried %} <span class="muted">[{{ g.untried | join(', ') }}]</span>{% endif %}
-          </span>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    {% endfor %}
-  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

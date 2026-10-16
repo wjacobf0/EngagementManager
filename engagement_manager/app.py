@@ -16,10 +16,12 @@ from .crypto import decrypt_secret, encrypt_secret
 from .database import get_session, init_db
 from .ingest import import_nmap, import_nxc
 from .models import (
+    _utcnow,
     AccessLevel,
     Credential,
     CredentialSource,
     Engagement,
+    Finding,
     Host,
     HostCredential,
     Reachability,
@@ -28,6 +30,7 @@ from .models import (
     Script,
     SecretType,
     Service,
+    Severity,
 )
 
 BASE_DIR = Path(__file__).parent
@@ -91,6 +94,7 @@ def dashboard(request: Request, session: Session = Depends(get_session)):
             "open_ports": open_ports,
             "creds": len(creds),
             "validated": sum(1 for c in creds if c.validated),
+            "rooted": sum(1 for h in hosts if h.proof_flag or h.rooted),
         }
     return templates.TemplateResponse(
         request, "dashboard.html", _ctx(request, session, stats=stats)
@@ -234,6 +238,26 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
             reach_methods=list(ReachMethod),
         ),
     )
+
+
+@app.post("/hosts/{host_id}/progress")
+def update_progress(
+    host_id: int,
+    foothold: str = Form(""),
+    local_flag: str = Form(""),
+    rooted: str = Form(""),
+    proof_flag: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host:
+        host.foothold = bool(foothold)
+        host.rooted = bool(rooted)
+        host.local_flag = local_flag.strip() or None
+        host.proof_flag = proof_flag.strip() or None
+        session.add(host)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
 @app.post("/hosts/{host_id}/reach")
@@ -634,6 +658,233 @@ def toggle_validated(cred_id: int, session: Session = Depends(get_session)):
         session.add(cred)
         session.commit()
     return RedirectResponse("/credentials", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Findings
+# --------------------------------------------------------------------------- #
+_SEVERITY_ORDER = {
+    Severity.critical: 0,
+    Severity.high: 1,
+    Severity.medium: 2,
+    Severity.low: 3,
+    Severity.info: 4,
+}
+
+
+def _findings_for(session: Session, engagement_id: int) -> list[Finding]:
+    rows = session.exec(
+        select(Finding).where(Finding.engagement_id == engagement_id)
+    ).all()
+    return sorted(rows, key=lambda f: (_SEVERITY_ORDER.get(f.severity, 9), f.created_at))
+
+
+@app.get("/findings", response_class=HTMLResponse)
+def findings_page(request: Request, session: Session = Depends(get_session)):
+    active = _active_engagement(request, session)
+    findings, hosts = [], []
+    if active:
+        findings = _findings_for(session, active.id)
+        hosts = session.exec(
+            select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
+        ).all()
+    host_names = {h.id: (h.hostname or h.ip) for h in hosts}
+    return templates.TemplateResponse(
+        request,
+        "findings.html",
+        _ctx(
+            request,
+            session,
+            findings=findings,
+            hosts=hosts,
+            host_names=host_names,
+            severities=list(Severity),
+        ),
+    )
+
+
+@app.post("/findings")
+def add_finding(
+    request: Request,
+    title: str = Form(...),
+    severity: str = Form("medium"),
+    host_id: str = Form(""),
+    description: str = Form(""),
+    steps: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    active = _active_engagement(request, session)
+    if active and title.strip():
+        try:
+            sev = Severity(severity)
+        except ValueError:
+            sev = Severity.medium
+        session.add(
+            Finding(
+                engagement_id=active.id,
+                host_id=int(host_id) if host_id.strip().isdigit() else None,
+                title=title.strip(),
+                severity=sev,
+                description=description or None,
+                steps=steps or None,
+            )
+        )
+        session.commit()
+    return RedirectResponse("/findings", status_code=303)
+
+
+@app.post("/findings/{finding_id}/edit")
+def edit_finding(
+    finding_id: int,
+    title: str = Form(...),
+    severity: str = Form("medium"),
+    host_id: str = Form(""),
+    description: str = Form(""),
+    steps: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    finding = session.get(Finding, finding_id)
+    if finding and title.strip():
+        try:
+            finding.severity = Severity(severity)
+        except ValueError:
+            pass
+        finding.title = title.strip()
+        finding.host_id = int(host_id) if host_id.strip().isdigit() else None
+        finding.description = description or None
+        finding.steps = steps or None
+        session.add(finding)
+        session.commit()
+    return RedirectResponse("/findings", status_code=303)
+
+
+@app.post("/findings/{finding_id}/delete")
+def delete_finding(finding_id: int, session: Session = Depends(get_session)):
+    finding = session.get(Finding, finding_id)
+    if finding:
+        session.delete(finding)
+        session.commit()
+    return RedirectResponse("/findings", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Report
+# --------------------------------------------------------------------------- #
+def _report_context(session: Session, active: Engagement) -> dict:
+    hosts = session.exec(
+        select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
+    ).all()
+    creds = session.exec(
+        select(Credential)
+        .where(Credential.engagement_id == active.id)
+        .order_by(Credential.domain, Credential.username)
+    ).all()
+    cred_rows = []
+    for c in creds:
+        try:
+            secret = decrypt_secret(c.secret_encrypted)
+        except ValueError:
+            secret = "<decrypt error>"
+        cred_rows.append({"cred": c, "secret": secret})
+    host_names = {h.id: (h.hostname or h.ip) for h in hosts}
+    owned = [h for h in hosts if h.proof_flag or h.rooted]
+    return {
+        "eng": active,
+        "hosts": hosts,
+        "cred_rows": cred_rows,
+        "findings": _findings_for(session, active.id),
+        "host_names": host_names,
+        "generated_at": _utcnow(),
+        "owned_count": len(owned),
+    }
+
+
+@app.get("/report", response_class=HTMLResponse)
+def report_page(request: Request, session: Session = Depends(get_session)):
+    active = _active_engagement(request, session)
+    ctx = _report_context(session, active) if active else {}
+    return templates.TemplateResponse(
+        request, "report.html", _ctx(request, session, report=ctx)
+    )
+
+
+@app.get("/report.md")
+def report_markdown(request: Request, session: Session = Depends(get_session)):
+    active = _active_engagement(request, session)
+    if not active:
+        return Response("No active engagement.", media_type="text/plain")
+    md = _render_markdown_report(_report_context(session, active))
+    fname = "".join(c if c.isalnum() or c in "-_" else "-" for c in active.name).strip("-")
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname or "report"}.md"'},
+    )
+
+
+def _render_markdown_report(ctx: dict) -> str:
+    eng = ctx["eng"]
+    out: list[str] = []
+    out.append(f"# {eng.name} — Engagement Report")
+    if eng.client:
+        out.append(f"\n**Client:** {eng.client}")
+    out.append(f"\n**Status:** {eng.status.value}  ")
+    out.append(f"**Generated:** {ctx['generated_at']:%Y-%m-%d %H:%M UTC}")
+    if eng.scope:
+        out.append("\n## Scope\n\n```\n" + eng.scope + "\n```")
+
+    out.append("\n## Summary\n")
+    out.append(f"- Hosts: {len(ctx['hosts'])}")
+    out.append(f"- Hosts rooted / proof captured: {ctx['owned_count']}")
+    out.append(f"- Credentials recovered: {len(ctx['cred_rows'])}")
+    out.append(f"- Findings: {len(ctx['findings'])}")
+
+    out.append("\n## Hosts\n")
+    for h in ctx["hosts"]:
+        name = f"{h.ip}" + (f" ({h.hostname})" if h.hostname else "")
+        out.append(f"\n### {name}\n")
+        meta = [f"OS: {h.os or '—'}", f"Domain: {h.domain or '—'}", f"Status: {h.status.value}"]
+        out.append(" · ".join(meta))
+        prog = []
+        prog.append(("✔" if h.foothold else "✘") + " foothold")
+        prog.append(("✔" if h.local_flag else "✘") + " local.txt")
+        prog.append(("✔" if h.rooted else "✘") + " privesc")
+        prog.append(("✔" if h.proof_flag else "✘") + " proof.txt")
+        out.append("\nProgress: " + ", ".join(prog))
+        if h.local_flag:
+            out.append(f"\n- local.txt: `{h.local_flag}`")
+        if h.proof_flag:
+            out.append(f"- proof.txt: `{h.proof_flag}`")
+        ports = sorted(
+            (s for s in h.services if s.state == "open"), key=lambda s: s.port
+        )
+        if ports:
+            out.append("\n| Port | Service | Product / version |")
+            out.append("| --- | --- | --- |")
+            for s in ports:
+                pv = " ".join(x for x in (s.product, s.version) if x) or "—"
+                out.append(f"| {s.port}/{s.protocol} | {s.service_name or '—'} | {pv} |")
+
+    if ctx["cred_rows"]:
+        out.append("\n## Credentials recovered\n")
+        out.append("| Account | Type | Secret |")
+        out.append("| --- | --- | --- |")
+        for r in ctx["cred_rows"]:
+            c = r["cred"]
+            acct = (f"{c.domain}\\" if c.domain else "") + c.username
+            out.append(f"| {acct} | {c.secret_type.value} | `{r['secret']}` |")
+
+    if ctx["findings"]:
+        out.append("\n## Findings\n")
+        for f in ctx["findings"]:
+            loc = f" — {ctx['host_names'].get(f.host_id)}" if f.host_id else ""
+            out.append(f"\n### [{f.severity.value.upper()}] {f.title}{loc}\n")
+            if f.description:
+                out.append(f.description)
+            if f.steps:
+                out.append("\n**Steps:**\n\n" + f.steps)
+
+    return "\n".join(out) + "\n"
 
 
 # --------------------------------------------------------------------------- #

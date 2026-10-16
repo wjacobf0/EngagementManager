@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% macro finding_form(action, close_id, severities, hosts, f=None) %}
+<form method="post" action="{{ action }}">
+  <div class="field"><label>Title</label><input name="title" value="{{ f.title if f else '' }}" placeholder="SMB signing not required" required /></div>
+  <div class="row">
+    <div class="field"><label>Severity</label>
+      <select name="severity">
+        {% for s in severities %}<option value="{{ s.value }}" {{ 'selected' if (f and f.severity==s) or (not f and s.value=='medium') else '' }}>{{ s.value }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field grow"><label>Host (optional)</label>
+      <select name="host_id">
+        <option value="">— engagement-wide —</option>
+        {% for h in hosts %}<option value="{{ h.id }}" {{ 'selected' if f and f.host_id==h.id else '' }}>{{ h.ip }}{% if h.hostname %} ({{ h.hostname }}){% endif %}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field"><label>Description / impact</label><textarea name="description" rows="4" placeholder="What it is and why it matters.">{{ f.description or '' if f else '' }}</textarea></div>
+  <div class="field"><label>Steps to reproduce / exploit</label><textarea name="steps" rows="6" class="mono" placeholder="1. ...&#10;2. ...">{{ f.steps or '' if f else '' }}</textarea></div>
+  <div class="modal-actions">
+    <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
+    <button type="submit">Save finding</button>
+  </div>
+</form>
+{% endmacro %}
+
+{% block body %}
+<div class="topbar">
+  <h1>Findings</h1>
+  {% if active %}<div class="right"><button type="button" onclick="emShow('new-finding')">+ New finding</button></div>{% endif %}
+</div>
+
+{% if not active %}
+  <div class="card muted">Create an engagement first.</div>
+{% else %}
+
+<dialog id="new-finding" class="modal">
+  <div class="modal-head"><h3>New finding</h3><button type="button" class="icon" onclick="emClose('new-finding')" aria-label="Close">✕</button></div>
+  {{ finding_form('/findings', 'new-finding', severities, hosts) }}
+</dialog>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Severity</th><th>Title</th><th>Host</th><th></th></tr></thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+        <td>
+          {{ f.title }}
+          {% if f.description %}<div class="muted small wrap">{{ f.description }}</div>{% endif %}
+        </td>
+        <td class="mono">{% if f.host_id %}<a href="/hosts/{{ f.host_id }}">{{ host_names.get(f.host_id, f.host_id) }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="right nowrap">
+          <button class="link small" type="button" onclick="emShow('f-edit-{{ f.id }}')">Edit</button>
+          <form method="post" action="/findings/{{ f.id }}/delete" onsubmit="return confirm('Delete finding &quot;{{ f.title }}&quot;?')">
+            <button class="danger small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No findings yet. They flow into the <a href="/report">Report</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% for f in findings %}
+<dialog id="f-edit-{{ f.id }}" class="modal">
+  <div class="modal-head"><h3>Edit finding</h3><button type="button" class="icon" onclick="emClose('f-edit-{{ f.id }}')" aria-label="Close">✕</button></div>
+  {{ finding_form('/findings/' ~ f.id ~ '/edit', 'f-edit-' ~ f.id, severities, hosts, f) }}
+</dialog>
+{% endfor %}
+{% endif %}
+{% endblock %}

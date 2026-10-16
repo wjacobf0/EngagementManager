@@ -1,8 +1,10 @@
 # Engagement Manager
 
 A local, **Python-only** tool for keeping track of a penetration test: hosts,
-services, users, credentials (passwords and hashes), and the output of `nmap`
-and NetExec (`nxc`) scans. No Node, no Docker, no database server. It runs on
+services, users, credentials (passwords and hashes), per-host progress
+(foothold / local.txt / privesc / proof.txt), findings, and the output of
+`nmap` and NetExec (`nxc`) scans — with a one-click printable report that pulls
+it all together. No Node, no Docker, no database server. It runs on
 Kali or Windows with a single `pipx install` and one command, stores everything
 in a local SQLite file, and opens a web UI in your browser.
 
@@ -175,13 +177,29 @@ makes stored secrets unrecoverable. To move an engagement to another machine
 
 `engagement-manager where` prints the paths in use on either platform.
 
+## Progress, findings, and the report
+
+Each host page has a **Progress** panel for the four things the OSCP scores:
+foothold (a shell), the `local.txt` user flag, privilege escalation, and the
+`proof.txt` root flag. The flag fields hold the actual captured values. The
+Hosts list shows a compact `F L R P` indicator per host, and the dashboard
+tallies how many boxes are rooted.
+
+The **Findings** page records vulnerabilities (title, severity, optional host,
+impact, and reproduction steps). Everything — scope, per-host progress and open
+ports, recovered credentials, and findings — rolls up on the **Report** page,
+which prints to PDF straight from the browser or downloads as Markdown at
+`/report.md` for pasting into your own template.
+
 ## Data model
 
 ```
 Engagement                   one assessment; scopes everything below
   Host                       a target computer (IP, hostname, OS, domain, tags)
     Service                  an open port / service on that host
+                             + OSCP progress: foothold, local_flag, rooted, proof_flag
   Credential                 username + secret (Fernet-encrypted at rest)
+  Finding                    a vulnerability (severity, impact, steps), optionally per-host
   ScanImport                 raw nmap/nxc upload + parsed summary
 HostCredential               a credential proven against a host, with access level
 ```
@@ -203,5 +221,5 @@ HostCredential               a credential proven against a host, with access lev
 The parsers in `engagement_manager/parsers/` are plain functions independent of
 the web layer, so adding a format (Nessus `.nessus`, masscan, BloodHound) is a
 new parser plus a few lines in `ingest.py`. Natural next features the schema
-already supports: findings/vulnerabilities per host, evidence attachments, and
-report export.
+already supports: evidence/screenshot attachments on findings, and parsing of
+nmap NSE script output.

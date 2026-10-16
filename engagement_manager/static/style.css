@@ -105,21 +105,30 @@ td.cell.user { background:rgba(47,129,247,.18); color:var(--accent); }
 td.cell.fail { background:rgba(139,148,158,.12); color:var(--muted); }
 td.cell.gap { background:rgba(210,153,34,.22); color:var(--amber); }
 td.cell.na { color:var(--border); }
-td.cell b { color:var(--amber); }
-.legend { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
-.legend .dot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-left:8px; }
-.legend .dot.admin { background:var(--red); }
-.legend .dot.user { background:var(--accent); }
-.legend .dot.fail { background:var(--muted); }
-.legend .dot.gap { background:var(--amber); }
-.legend .dot.na { background:var(--border); }
-.gap-row { display:flex; gap:14px; padding:10px 0; border-bottom:1px solid var(--border); align-items:baseline; }
-.gap-row:last-child { border-bottom:none; }
-.gap-cred { min-width:220px; }
-.gap-items { display:flex; flex-wrap:wrap; gap:6px; }
-.chip { display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; border:1px solid var(--border); }
-.chip.untested { background:rgba(210,153,34,.15); border-color:rgba(210,153,34,.4); }
-.chip.partial { background:var(--panel-2); }
+td.cell b.plus, .plus { color:var(--amber); }
+
+/* Matrix legend: each key shows the actual glyph it maps to, not an abstract dot. */
+.legend { display:flex; align-items:center; gap:16px; font-size:12px; color:var(--muted); flex-wrap:wrap; margin-bottom:12px; }
+.legend .key { display:inline-flex; align-items:center; gap:6px; }
+.legend .cell { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
+  border-radius:4px; font-family:var(--mono); font-weight:700; border:1px solid var(--border); }
+.legend .cell.admin { background:rgba(248,81,73,.22); color:var(--red); }
+.legend .cell.user { background:rgba(47,129,247,.18); color:var(--accent); }
+.legend .cell.fail { background:rgba(139,148,158,.12); color:var(--muted); }
+.legend .cell.gap { background:rgba(210,153,34,.22); color:var(--amber); }
+.legend .cell.na { color:var(--muted); }
+
+/* Gaps table: one row per credential-and-target, readable left to right. */
+table.gaps td { vertical-align:top; }
+table.gaps td.gap-cred { min-width:160px; }
+table.gaps .muted.small { display:block; }
+.protos { display:flex; flex-wrap:wrap; gap:5px; }
+.proto { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
+  font-family:var(--mono); background:var(--panel-2); border:1px solid var(--border); }
+code.cmd { display:inline-block; white-space:nowrap; background:var(--bg); border:1px solid var(--border);
+  padding:4px 8px; font-size:12px; }
+.badge.gap { background:rgba(210,153,34,.15); color:var(--amber); }
+.badge.partial { background:var(--panel-2); color:var(--muted); }
 
 .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
 .badge.alive,.badge.active { background:rgba(63,185,80,.15); color:var(--green); }
@@ -129,3 +138,20 @@ td.cell b { color:var(--amber); }
 .badge.admin, .badge.domain_admin { background:rgba(248,81,73,.15); color:var(--red); }
 .badge.user { background:rgba(47,129,247,.15); color:var(--accent); }
 .badge.none { background:rgba(139,148,158,.15); color:var(--muted); }
+
+/* Finding severity badges */
+.badge.sev-critical { background:rgba(139,0,0,.3); color:#ff6b6b; }
+.badge.sev-high { background:rgba(248,81,73,.18); color:var(--red); }
+.badge.sev-medium { background:rgba(210,153,34,.2); color:var(--amber); }
+.badge.sev-low { background:rgba(210,153,34,.12); color:var(--amber); }
+.badge.sev-info { background:rgba(139,148,158,.15); color:var(--muted); }
+
+/* Host OSCP progress */
+.progress-grid { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:12px; }
+label.check { display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+label.check input { width:auto; }
+.progress-pips { white-space:nowrap; }
+.progress-pips .pip { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
+  margin-right:3px; border-radius:4px; font-family:var(--mono); font-size:11px; font-weight:700;
+  border:1px solid var(--border); color:var(--muted); background:var(--panel-2); }
+.progress-pips .pip.on { background:rgba(63,185,80,.2); border-color:rgba(63,185,80,.5); color:var(--green); }

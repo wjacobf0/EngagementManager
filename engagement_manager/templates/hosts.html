@@ -25,7 +25,7 @@
 <div class="card">
   <table>
     <thead>
-      <tr><th>Status</th><th>IP</th><th>Hostname</th><th>Domain</th><th>OS</th><th>Open ports</th><th>Scripts</th><th></th></tr>
+      <tr><th>Status</th><th>IP</th><th>Hostname</th><th>Domain</th><th>OS</th><th>Progress</th><th>Open ports</th><th>Scripts</th><th></th></tr>
     </thead>
     <tbody>
       {% for h in hosts %}
@@ -35,6 +35,12 @@
         <td>{{ h.hostname or "—" }}</td>
         <td>{{ h.domain or "—" }}</td>
         <td class="muted">{{ h.os or "—" }}</td>
+        <td class="progress-pips">
+          <span class="pip {{ 'on' if h.foothold else '' }}" title="Foothold">F</span>
+          <span class="pip {{ 'on' if h.local_flag else '' }}" title="local.txt captured">L</span>
+          <span class="pip {{ 'on' if h.rooted else '' }}" title="Privesc (root/SYSTEM)">R</span>
+          <span class="pip {{ 'on' if h.proof_flag else '' }}" title="proof.txt captured">P</span>
+        </td>
         <td class="mono">
           {% set ports = h.services | selectattr('state','equalto','open') | map(attribute='port') | sort | list %}
           {{ ports | join(", ") if ports else "—" }}
@@ -47,7 +53,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="muted">No hosts yet. Use “+ New host” or import a scan.</td></tr>
+      <tr><td colspan="9" class="muted">No hosts yet. Use “+ New host” or import a scan.</td></tr>
       {% endfor %}
     </tbody>
   </table>

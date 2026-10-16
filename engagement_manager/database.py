@@ -30,6 +30,12 @@ def _migrate() -> None:
 
     additions = {
         "scanimport": [("vantage_host_id", "INTEGER")],
+        "host": [
+            ("foothold", "BOOLEAN DEFAULT 0"),
+            ("local_flag", "VARCHAR"),
+            ("rooted", "BOOLEAN DEFAULT 0"),
+            ("proof_flag", "VARCHAR"),
+        ],
     }
     with engine.begin() as conn:
         for table, cols in additions.items():

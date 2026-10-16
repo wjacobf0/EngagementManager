@@ -58,6 +58,14 @@ class AccessLevel(str, Enum):
     domain_admin = "domain_admin"
 
 
+class Severity(str, Enum):
+    info = "info"
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
 class Engagement(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)
@@ -78,6 +86,10 @@ class Engagement(SQLModel, table=True):
         back_populates="engagement",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    findings: list["Finding"] = Relationship(
+        back_populates="engagement",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class Host(SQLModel, table=True):
@@ -92,6 +104,13 @@ class Host(SQLModel, table=True):
     notes: Optional[str] = None
     first_seen: datetime = Field(default_factory=_utcnow)
     last_seen: datetime = Field(default_factory=_utcnow)
+
+    # OSCP progress: a shell, the user flag, privesc, and the proof flag. The
+    # flag fields hold the actual local.txt / proof.txt contents when captured.
+    foothold: bool = Field(default=False)
+    local_flag: Optional[str] = None
+    rooted: bool = Field(default=False)
+    proof_flag: Optional[str] = None
 
     engagement: Optional[Engagement] = Relationship(back_populates="hosts")
     services: list["Service"] = Relationship(
@@ -196,6 +215,25 @@ class Reachability(SQLModel, table=True):
     discovered_by_scan_id: Optional[int] = Field(default=None, foreign_key="scanimport.id")
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Finding(SQLModel, table=True):
+    """A vulnerability / finding, optionally tied to a host.
+
+    Severity and the free-text fields map onto the usual report sections:
+    `description` (what it is / impact) and `steps` (how it was exploited).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    engagement_id: int = Field(foreign_key="engagement.id", index=True)
+    host_id: Optional[int] = Field(default=None, foreign_key="host.id", index=True)
+    title: str
+    severity: Severity = Field(default=Severity.medium)
+    description: Optional[str] = None
+    steps: Optional[str] = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+    engagement: Optional[Engagement] = Relationship(back_populates="findings")
+    host: Optional[Host] = Relationship()
 
 
 class ScanImport(SQLModel, table=True):

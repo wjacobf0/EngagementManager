@@ -72,6 +72,21 @@
 </div>
 
 <div class="card">
+  <h3>Progress</h3>
+  <form method="post" action="/hosts/{{ host.id }}/progress">
+    <div class="progress-grid">
+      <label class="check"><input type="checkbox" name="foothold" value="1" {{ 'checked' if host.foothold else '' }} /> Foothold (shell)</label>
+      <label class="check"><input type="checkbox" name="rooted" value="1" {{ 'checked' if host.rooted else '' }} /> Privesc (root / SYSTEM)</label>
+    </div>
+    <div class="row">
+      <div class="field grow"><label>local.txt (user flag)</label><input class="mono" name="local_flag" value="{{ host.local_flag or '' }}" placeholder="not captured yet" /></div>
+      <div class="field grow"><label>proof.txt (root flag)</label><input class="mono" name="proof_flag" value="{{ host.proof_flag or '' }}" placeholder="not captured yet" /></div>
+    </div>
+    <div class="modal-actions"><button type="submit">Save progress</button></div>
+  </form>
+</div>
+
+<div class="card">
   <div class="card-head">
     <h3>Reachability</h3>
     <button type="button" onclick="emShow('add-reach')">+ Add path</button>
