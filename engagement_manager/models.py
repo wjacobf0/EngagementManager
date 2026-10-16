@@ -125,6 +125,10 @@ class Host(SQLModel, table=True):
         back_populates="host",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    evidence: list["Evidence"] = Relationship(
+        back_populates="host",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class Service(SQLModel, table=True):
@@ -186,6 +190,32 @@ class Script(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
     host: Optional[Host] = Relationship(back_populates="scripts")
+
+
+class EvidenceKind(str, Enum):
+    local = "local"    # local.txt proof screenshot
+    proof = "proof"    # proof.txt proof screenshot
+    other = "other"
+
+
+class Evidence(SQLModel, table=True):
+    """A proof screenshot attached to a host.
+
+    The OSCP requires each local.txt / proof.txt to be shown in a screenshot
+    that also shows the target's IP (ipconfig / ip addr) in the same frame.
+    The image bytes live in the database (not on disk) so an engagement stays
+    two portable files: copy engagement.db + secret.key and the proof comes too.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    host_id: int = Field(foreign_key="host.id", index=True)
+    kind: EvidenceKind = Field(default=EvidenceKind.other)
+    filename: Optional[str] = None
+    content_type: str = Field(default="image/png")
+    data: bytes = b""
+    caption: Optional[str] = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+    host: Optional["Host"] = Relationship(back_populates="evidence")
 
 
 class ReachMethod(str, Enum):

@@ -3,6 +3,7 @@
 Runs as a single local process backed by SQLite. The active engagement is
 remembered in a cookie so links and forms stay clean.
 """
+import base64
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,8 @@ from .models import (
     Credential,
     CredentialSource,
     Engagement,
+    Evidence,
+    EvidenceKind,
     Finding,
     Host,
     HostCredential,
@@ -258,6 +261,55 @@ def update_progress(
         session.add(host)
         session.commit()
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.post("/hosts/{host_id}/evidence")
+async def upload_evidence(
+    host_id: int,
+    kind: str = Form("other"),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host:
+        data = await file.read()
+        ctype = file.content_type or "image/png"
+        if data and ctype.startswith("image/"):
+            try:
+                k = EvidenceKind(kind)
+            except ValueError:
+                k = EvidenceKind.other
+            session.add(
+                Evidence(
+                    host_id=host_id,
+                    kind=k,
+                    filename=file.filename,
+                    content_type=ctype,
+                    data=data,
+                    caption=caption or None,
+                )
+            )
+            session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.get("/evidence/{evidence_id}")
+def get_evidence(evidence_id: int, session: Session = Depends(get_session)):
+    ev = session.get(Evidence, evidence_id)
+    if not ev:
+        return RedirectResponse("/hosts", status_code=303)
+    return Response(content=ev.data, media_type=ev.content_type)
+
+
+@app.post("/evidence/{evidence_id}/delete")
+def delete_evidence(evidence_id: int, session: Session = Depends(get_session)):
+    ev = session.get(Evidence, evidence_id)
+    host_id = ev.host_id if ev else None
+    if ev:
+        session.delete(ev)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}" if host_id else "/hosts", status_code=303)
 
 
 @app.post("/hosts/{host_id}/reach")
@@ -788,12 +840,28 @@ def _report_context(session: Session, active: Engagement) -> dict:
         cred_rows.append({"cred": c, "secret": secret})
     host_names = {h.id: (h.hostname or h.ip) for h in hosts}
     owned = [h for h in hosts if h.proof_flag or h.rooted]
+    # Inline each proof screenshot as a data URI so the printed PDF is self-contained.
+    evidence: dict[int, list[dict]] = {}
+    for h in hosts:
+        shots = []
+        for e in sorted(h.evidence, key=lambda e: e.created_at):
+            b64 = base64.b64encode(e.data).decode("ascii")
+            shots.append(
+                {
+                    "kind": e.kind.value,
+                    "caption": e.caption,
+                    "filename": e.filename,
+                    "uri": f"data:{e.content_type};base64,{b64}",
+                }
+            )
+        evidence[h.id] = shots
     return {
         "eng": active,
         "hosts": hosts,
         "cred_rows": cred_rows,
         "findings": _findings_for(session, active.id),
         "host_names": host_names,
+        "evidence": evidence,
         "generated_at": _utcnow(),
         "owned_count": len(owned),
     }
@@ -855,6 +923,9 @@ def _render_markdown_report(ctx: dict) -> str:
             out.append(f"\n- local.txt: `{h.local_flag}`")
         if h.proof_flag:
             out.append(f"- proof.txt: `{h.proof_flag}`")
+        for e in ctx["evidence"].get(h.id, []):
+            label = e["caption"] or e["filename"] or "screenshot"
+            out.append(f"- screenshot ({e['kind']}): {label} — see HTML report / {e['filename'] or 'attachment'}")
         ports = sorted(
             (s for s in h.services if s.state == "open"), key=lambda s: s.port
         )

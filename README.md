@@ -185,6 +185,12 @@ foothold (a shell), the `local.txt` user flag, privilege escalation, and the
 Hosts list shows a compact `F L R P` indicator per host, and the dashboard
 tallies how many boxes are rooted.
 
+The OSCP also requires each flag to be shown in a **screenshot** that includes
+the target's IP (`ipconfig` / `ip addr`) in the same frame — the flag string
+alone isn't accepted. Attach those screenshots to the host from the Progress
+panel. They're stored inside the database (so they travel with the two portable
+files, not a separate folder) and embedded directly in the report.
+
 The **Findings** page records vulnerabilities (title, severity, optional host,
 impact, and reproduction steps). Everything — scope, per-host progress and open
 ports, recovered credentials, and findings — rolls up on the **Report** page,
@@ -197,6 +203,7 @@ which prints to PDF straight from the browser or downloads as Markdown at
 Engagement                   one assessment; scopes everything below
   Host                       a target computer (IP, hostname, OS, domain, tags)
     Service                  an open port / service on that host
+    Evidence                 a proof screenshot (image bytes stored in the db)
                              + OSCP progress: foothold, local_flag, rooted, proof_flag
   Credential                 username + secret (Fernet-encrypted at rest)
   Finding                    a vulnerability (severity, impact, steps), optionally per-host
@@ -221,5 +228,5 @@ HostCredential               a credential proven against a host, with access lev
 The parsers in `engagement_manager/parsers/` are plain functions independent of
 the web layer, so adding a format (Nessus `.nessus`, masscan, BloodHound) is a
 new parser plus a few lines in `ingest.py`. Natural next features the schema
-already supports: evidence/screenshot attachments on findings, and parsing of
-nmap NSE script output.
+already supports: screenshot attachments on findings (hosts already have them),
+and parsing of nmap NSE script output.

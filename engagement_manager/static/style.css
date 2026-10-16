@@ -155,3 +155,11 @@ label.check input { width:auto; }
   margin-right:3px; border-radius:4px; font-family:var(--mono); font-size:11px; font-weight:700;
   border:1px solid var(--border); color:var(--muted); background:var(--panel-2); }
 .progress-pips .pip.on { background:rgba(63,185,80,.2); border-color:rgba(63,185,80,.5); color:var(--green); }
+
+/* Proof screenshots on the host page */
+.shots { display:flex; flex-wrap:wrap; gap:14px; margin:10px 0 16px; }
+figure.shot { margin:0; width:260px; }
+figure.shot img { width:100%; border:1px solid var(--border); border-radius:6px; display:block; background:var(--bg); }
+figure.shot figcaption { display:flex; align-items:center; gap:8px; margin-top:6px; }
+figure.shot figcaption form { margin:0; }
+button.danger-link { color:var(--red); }

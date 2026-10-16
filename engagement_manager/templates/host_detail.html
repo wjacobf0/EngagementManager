@@ -84,6 +84,38 @@
     </div>
     <div class="modal-actions"><button type="submit">Save progress</button></div>
   </form>
+
+  <h4>Proof screenshots</h4>
+  <p class="muted small">The OSCP requires each flag to be shown in a screenshot that also shows the target IP (<code>ipconfig</code> / <code>ip addr</code>) in the same frame. Attach them here; they're embedded in the <a href="/report">Report</a>.</p>
+  {% if host.evidence %}
+  <div class="shots">
+    {% for e in host.evidence | sort(attribute='created_at') %}
+    <figure class="shot">
+      <a href="/evidence/{{ e.id }}" target="_blank"><img src="/evidence/{{ e.id }}" alt="{{ e.kind.value }} proof" /></a>
+      <figcaption>
+        <span class="badge {{ 'alive' if e.kind.value in ('local','proof') else 'unknown' }}">{{ e.kind.value }}</span>
+        {% if e.caption %}<span class="muted small">{{ e.caption }}</span>{% endif %}
+        <form method="post" action="/evidence/{{ e.id }}/delete" onsubmit="return confirm('Delete this screenshot?')">
+          <button class="link small danger-link" type="submit">remove</button>
+        </form>
+      </figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/hosts/{{ host.id }}/evidence" enctype="multipart/form-data" class="row">
+    <div class="field"><label>For</label>
+      <select name="kind">
+        <option value="local">local.txt</option>
+        <option value="proof">proof.txt</option>
+        <option value="other">other</option>
+      </select>
+    </div>
+    <div class="field grow"><label>Caption (optional)</label><input name="caption" placeholder="local.txt + ipconfig" /></div>
+    <div class="field"><label>Image</label><input type="file" name="file" accept="image/*" required /></div>
+    <div class="field"><label>&nbsp;</label><button type="submit">Upload</button></div>
+  </form>
 </div>
 
 <div class="card">
