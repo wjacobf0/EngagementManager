@@ -62,7 +62,7 @@
   <p class="muted small">If unmodified, the URL above is all the report needs. Fill in the rest only if you changed the exploit.</p>
   <div class="field"><label>Shellcode generation command (if applicable)</label><input class="mono" name="shellcode_cmd" value="{{ e.shellcode_cmd or '' if e else '' }}" placeholder="msfvenom -p windows/x64/shell_reverse_tcp LHOST=... -f python" /></div>
   <div class="field"><label>Highlighted changes</label><textarea name="changes" rows="4" class="mono" placeholder="Line 42: changed RHOST to target IP&#10;Line 88: replaced shellcode with msfvenom output above">{{ e.changes or '' if e else '' }}</textarea></div>
-  <div class="field"><label>Why these changes were made</label><textarea name="explanation" rows="3" placeholder="Original targeted a different OS build; offsets adjusted for 17763.">{{ e.explanation or '' if e else '' }}</textarea></div>
+  <div class="field"><label>Comments (include Why changes were made)</label><textarea name="explanation" rows="3" placeholder="Original targeted a different OS build; offsets adjusted for 17763.">{{ e.explanation or '' if e else '' }}</textarea></div>
   <div class="field"><label>Modified exploit code</label><textarea name="code" rows="10" class="mono" placeholder="Paste the full modified exploit here.">{{ e.code or '' if e else '' }}</textarea></div>
   <div class="modal-actions">
     <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
