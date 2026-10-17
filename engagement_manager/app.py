@@ -708,10 +708,17 @@ def credentials_page(request: Request, session: Session = Depends(get_session)):
                 secret = decrypt_secret(c.secret_encrypted)
             except ValueError:
                 secret = "<decrypt error>"
+            cracked = ""
+            if c.cracked_encrypted:
+                try:
+                    cracked = decrypt_secret(c.cracked_encrypted)
+                except ValueError:
+                    cracked = "<decrypt error>"
             # Protocols this credential has been used over, from its host links.
             protos = sorted({hc.proto for hc in c.host_credentials if hc.proto})
             rows.append(
-                {"c": c, "secret": secret, "protos": ", ".join(protos) or "—"}
+                {"c": c, "secret": secret, "cracked": cracked,
+                 "protos": ", ".join(protos) or "—"}
             )
     return templates.TemplateResponse(
         request,
@@ -725,6 +732,7 @@ def add_credential(
     request: Request,
     username: str = Form(...),
     secret: str = Form(...),
+    cracked: str = Form(""),
     domain: str = Form(""),
     secret_type: str = Form("password"),
     notes: str = Form(""),
@@ -738,6 +746,7 @@ def add_credential(
                 domain=domain or None,
                 username=username.strip(),
                 secret_encrypted=encrypt_secret(secret),
+                cracked_encrypted=encrypt_secret(cracked) if cracked else None,
                 secret_type=SecretType(secret_type),
                 notes=notes or None,
             )
@@ -751,6 +760,7 @@ def edit_credential(
     cred_id: int,
     username: str = Form(...),
     secret: str = Form(""),
+    cracked: str = Form(""),
     domain: str = Form(""),
     secret_type: str = Form("password"),
     notes: str = Form(""),
@@ -764,6 +774,9 @@ def edit_credential(
         cred.notes = notes or None
         if secret:  # blank leaves the stored secret unchanged
             cred.secret_encrypted = encrypt_secret(secret)
+        # The cracked field is shown in full in the edit form, so take it as
+        # given: a value sets it, blank clears it.
+        cred.cracked_encrypted = encrypt_secret(cracked) if cracked else None
         session.add(cred)
         session.commit()
     return RedirectResponse("/credentials", status_code=303)
@@ -775,6 +788,57 @@ def delete_credential(cred_id: int, session: Session = Depends(get_session)):
     if cred:
         session.delete(cred)
         session.commit()
+    return RedirectResponse("/credentials", status_code=303)
+
+
+# Rank access levels so a merge keeps the strongest result on each host.
+_ACCESS_RANK = {
+    AccessLevel.none: 0,
+    AccessLevel.user: 1,
+    AccessLevel.admin: 2,
+    AccessLevel.domain_admin: 3,
+}
+
+
+@app.post("/credentials/{cred_id}/merge")
+def merge_credential(
+    cred_id: int, target: str = Form(""), session: Session = Depends(get_session)
+):
+    """Fold `cred_id` (the duplicate) into `target`, then delete it.
+
+    Each of the source's host results moves onto the target. Where the target
+    already has a result for the same host+protocol, the two are combined,
+    keeping the stronger access level and any proven flag, so nothing is lost.
+    """
+    source = session.get(Credential, cred_id)
+    tgt_id = int(target) if target.strip().isdigit() else None
+    if source and tgt_id and tgt_id != cred_id:
+        dest = session.get(Credential, tgt_id)
+        if dest and dest.engagement_id == source.engagement_id:
+            dest_links = {(l.host_id, l.proto): l for l in dest.host_credentials}
+            for link in list(source.host_credentials):
+                key = (link.host_id, link.proto)
+                existing = dest_links.get(key)
+                if existing is None:
+                    # Move the link across the ORM relationship (not just the FK)
+                    # so deleting the source doesn't cascade-delete it.
+                    source.host_credentials.remove(link)
+                    dest.host_credentials.append(link)
+                    dest_links[key] = link
+                else:
+                    if _ACCESS_RANK.get(link.access_level, 0) > _ACCESS_RANK.get(
+                        existing.access_level, 0
+                    ):
+                        existing.access_level = link.access_level
+                    existing.proven = existing.proven or link.proven
+                    session.add(existing)
+                    # duplicate link stays on the source and is removed with it
+            # Keep a cracked password from the source if the kept one lacks it.
+            if not dest.cracked_encrypted and source.cracked_encrypted:
+                dest.cracked_encrypted = source.cracked_encrypted
+                session.add(dest)
+            session.delete(source)
+            session.commit()
     return RedirectResponse("/credentials", status_code=303)
 
 
@@ -955,24 +1019,45 @@ def scans_page(request: Request, session: Session = Depends(get_session)):
 async def upload_scan(
     tool: str,
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     vantage: str = Form(""),
     session: Session = Depends(get_session),
 ):
     active = _active_engagement(request, session)
+    errors: list[str] = []
     if active and tool in ("nmap", "nxc"):
-        raw = (await file.read()).decode("utf-8", errors="replace")
+        eng_id = active.id
         vantage_id = int(vantage) if vantage.strip().isdigit() else None
-        try:
-            if tool == "nmap":
-                import_nmap(session, active.id, raw, file.filename, vantage_id)
-            else:
-                import_nxc(session, active.id, raw, file.filename, vantage_id)
-        except Exception as exc:  # noqa: BLE001 - show parse errors in the UI
-            return templates.TemplateResponse(
-                request,
-                "scans.html",
-                _ctx(request, session, scans=[], hosts=[], error=f"Import failed: {exc}"),
-                status_code=422,
-            )
+        importer = import_nmap if tool == "nmap" else import_nxc
+        # Import each file on its own so one bad scan doesn't abort the batch.
+        for f in files:
+            if not f.filename:
+                continue
+            try:
+                raw = (await f.read()).decode("utf-8", errors="replace")
+                importer(session, eng_id, raw, f.filename, vantage_id)
+            except Exception as exc:  # noqa: BLE001 - show parse errors in the UI
+                session.rollback()
+                errors.append(f"{f.filename}: {exc}")
+
+    if errors:
+        scans, hosts = [], []
+        if active:
+            scans = session.exec(
+                select(ScanImport)
+                .where(ScanImport.engagement_id == active.id)
+                .order_by(ScanImport.imported_at.desc())
+            ).all()
+            hosts = session.exec(
+                select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
+            ).all()
+        return templates.TemplateResponse(
+            request,
+            "scans.html",
+            _ctx(
+                request, session, scans=scans, hosts=hosts,
+                error="Some files failed to import — " + "; ".join(errors),
+            ),
+            status_code=422,
+        )
     return RedirectResponse("/scans", status_code=303)

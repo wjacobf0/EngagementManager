@@ -36,6 +36,7 @@ def _migrate() -> None:
             ("rooted", "BOOLEAN DEFAULT 0"),
             ("proof_flag", "VARCHAR"),
         ],
+        "credential": [("cracked_encrypted", "VARCHAR")],
     }
     with engine.begin() as conn:
         for table, cols in additions.items():
@@ -46,6 +47,19 @@ def _migrate() -> None:
             for name, decl in cols:
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {decl}"))
+
+        # Collapse exact-duplicate host-credential links left by imports run
+        # before per-(host, credential, protocol) de-duplication existed.
+        # Identical rows carry no extra information; keep the lowest id of each
+        # group. Rows that differ in access level or protocol are preserved.
+        conn.execute(
+            text(
+                "DELETE FROM hostcredential WHERE id NOT IN ("
+                "  SELECT MIN(id) FROM hostcredential"
+                "  GROUP BY host_id, credential_id, access_level, proven, COALESCE(proto, '')"
+                ")"
+            )
+        )
 
 
 def get_session() -> Generator[Session, None, None]:

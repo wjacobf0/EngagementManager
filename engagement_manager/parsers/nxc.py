@@ -17,9 +17,10 @@ _HEADER = re.compile(
 )
 _DOMAIN_INFO = re.compile(r"\(domain:(?P<domain>[^)]+)\)")
 _OS_INFO = re.compile(r"\[\*\]\s+(?P<os>.+?)\s+\(name:")
-# domain\user:secret, optionally followed by (Pwn3d!)
+# [+] success or [-] failure, then domain\user:secret, optionally (Pwn3d!).
+# Both are captured so the matrix can tell "tried and failed" from "never tried".
 _CRED = re.compile(
-    r"\[\+\]\s+(?:(?P<domain>[^\\\s]+)\\)?(?P<user>[^:\s]+):(?P<secret>\S+)(?P<pwned>.*)$"
+    r"\[(?P<result>[+\-])\]\s+(?:(?P<domain>[^\\\s]+)\\)?(?P<user>[^:\s]+):(?P<secret>\S+)(?P<pwned>.*)$"
 )
 
 
@@ -30,6 +31,7 @@ class ParsedAuth:
     domain: str | None
     username: str
     secret: str
+    success: bool  # [+] succeeded vs [-] failed
     admin: bool  # Pwn3d! => admin on this host
 
 
@@ -77,6 +79,7 @@ def parse_nxc_output(text: str) -> ParsedNxc:
 
         cred_m = _CRED.search(rest)
         if cred_m:
+            success = cred_m.group("result") == "+"
             result.auths.append(
                 ParsedAuth(
                     ip=ip,
@@ -84,7 +87,8 @@ def parse_nxc_output(text: str) -> ParsedNxc:
                     domain=cred_m.group("domain"),
                     username=cred_m.group("user"),
                     secret=cred_m.group("secret"),
-                    admin="pwn3d" in cred_m.group("pwned").lower(),
+                    success=success,
+                    admin=success and "pwn3d" in cred_m.group("pwned").lower(),
                 )
             )
 

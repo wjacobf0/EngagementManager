@@ -24,6 +24,14 @@ from .models import (
 from .parsers.nmap import parse_nmap_xml
 from .parsers.nxc import parse_nxc_output
 
+# Order access levels so a stronger result replaces a weaker one on re-import.
+_LEVEL_RANK = {
+    AccessLevel.none: 0,
+    AccessLevel.user: 1,
+    AccessLevel.admin: 2,
+    AccessLevel.domain_admin: 3,
+}
+
 
 def _get_or_create_host(session: Session, engagement_id: int, ip: str) -> tuple[Host, bool]:
     host = session.exec(
@@ -169,6 +177,10 @@ def import_nxc(
         host = session.exec(
             select(Host).where(Host.engagement_id == engagement_id, Host.ip == auth.ip)
         ).first()
+        # Match on username + domain. A local account (no domain) and a domain
+        # account can share a username and even a secret yet be different
+        # principals, so they stay distinct here; merge them by hand on the
+        # Credentials page if they turn out to be the same.
         cred = session.exec(
             select(Credential).where(
                 Credential.engagement_id == engagement_id,
@@ -184,21 +196,45 @@ def import_nxc(
                 secret_encrypted=encrypt_secret(auth.secret),
                 secret_type=_guess_secret_type(auth.secret),
                 source=CredentialSource.nxc,
-                validated=True,
+                validated=auth.success,  # a failed guess is not validated
             )
             session.add(cred)
             session.flush()
             creds_added += 1
+        elif auth.success and not cred.validated:
+            cred.validated = True
+            session.add(cred)
         if host:
-            session.add(
-                HostCredential(
-                    host_id=host.id,
-                    credential_id=cred.id,
-                    access_level=AccessLevel.admin if auth.admin else AccessLevel.user,
-                    proven=True,
-                    proto=auth.proto,
+            if auth.success:
+                level = AccessLevel.admin if auth.admin else AccessLevel.user
+            else:
+                level = AccessLevel.none
+            # One result per host+protocol: keep the best (a later success beats
+            # an earlier failure; admin beats user) instead of duplicating rows.
+            existing = session.exec(
+                select(HostCredential).where(
+                    HostCredential.host_id == host.id,
+                    HostCredential.credential_id == cred.id,
+                    HostCredential.proto == auth.proto,
                 )
-            )
+            ).first()
+            if existing is None:
+                session.add(
+                    HostCredential(
+                        host_id=host.id,
+                        credential_id=cred.id,
+                        access_level=level,
+                        proven=auth.success,
+                        proto=auth.proto,
+                    )
+                )
+            elif auth.success and (
+                not existing.proven
+                or _LEVEL_RANK[level] > _LEVEL_RANK.get(existing.access_level, 0)
+            ):
+                existing.proven = True
+                existing.access_level = level
+                session.add(existing)
 
     summary = (
         f"Parsed {len(parsed.hosts)} host(s): {created} new, {updated} updated; "

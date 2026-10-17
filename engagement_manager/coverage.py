@@ -59,8 +59,9 @@ class Cell:
 
     @property
     def partial(self) -> bool:
-        # Worked/attempted on the host, but some exposed protocols untried.
-        return self.status in ("admin", "user", "fail") and bool(self.untried_protos)
+        # Untried protocols remain on a host we've touched — but admin is root,
+        # so once this credential has admin here the rest isn't a gap worth the +.
+        return self.status in ("user", "fail") and bool(self.untried_protos)
 
 
 @dataclass
@@ -98,8 +99,25 @@ def build_coverage(session: Session, engagement_id: int) -> Coverage:
 
     admin_levels = {AccessLevel.admin, AccessLevel.domain_admin}
 
+    # Hosts already owned at admin by *any* credential: there's nothing left to
+    # spray there, so they're dropped from the gaps list (the matrix still shows
+    # them). A host is owned once one credential proves admin / domain admin.
+    owned_hosts = {
+        host.id
+        for host in hosts
+        if any(
+            hc.proven and hc.access_level in admin_levels
+            for hc in host.host_credentials
+        )
+    }
+
     for cred in creds:
-        usable = usable_protocols(cred.secret_type.value)
+        # A cracked hash gives you the plaintext, so it reaches everywhere a
+        # password does — not just the pass-the-hash protocols.
+        if cred.cracked_encrypted:
+            usable = set(_ALL)
+        else:
+            usable = usable_protocols(cred.secret_type.value)
         for host in hosts:
             # Only protocols the host exposes AND this credential type can use.
             applicable = sorted(set(host_protos[host.id]) & usable)
@@ -120,6 +138,10 @@ def build_coverage(session: Session, engagement_id: int) -> Coverage:
 
             cell = Cell(status=status, tried_protos=tried_protos, untried_protos=untried)
             cells[(cred.id, host.id)] = cell
+
+            # Owned boxes are done — keep them in the matrix but not in the gaps.
+            if host.id in owned_hosts:
+                continue
 
             if status == "gap":
                 untested_count += 1

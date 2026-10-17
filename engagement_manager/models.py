@@ -155,6 +155,9 @@ class Credential(SQLModel, table=True):
     domain: Optional[str] = Field(default=None, index=True)
     username: str = Field(index=True)
     secret_encrypted: str  # ciphertext only; see crypto.py
+    # Recovered plaintext for a hash credential (e.g. hashcat cracked the NTLM).
+    # Lets one credential hold both the hash and the password it cracked to.
+    cracked_encrypted: Optional[str] = None
     secret_type: SecretType = Field(default=SecretType.password)
     source: CredentialSource = Field(default=CredentialSource.manual)
     validated: bool = Field(default=False)
