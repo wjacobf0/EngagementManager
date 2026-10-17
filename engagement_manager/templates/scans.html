@@ -57,22 +57,49 @@
 
 <div class="card">
   <table>
-    <thead><tr><th>When</th><th>Tool</th><th>File</th><th>Hosts +/~</th><th>Summary</th></tr></thead>
+    <thead><tr><th>When</th><th>Tool</th><th>File</th><th>Scanned from</th><th>Hosts +/~</th><th>Summary</th><th></th></tr></thead>
     <tbody>
       {% for s in scans %}
       <tr>
         <td class="muted">{{ s.imported_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>{{ s.tool }}</td>
         <td class="mono">{{ s.filename or "—" }}</td>
+        <td>{% if s.vantage_host_id %}<span class="mono">{{ host_names.get(s.vantage_host_id, s.vantage_host_id) }}</span>{% else %}<span class="muted">Operator box</span>{% endif %}</td>
         <td class="mono">{{ s.hosts_created }} / {{ s.hosts_updated }}</td>
         <td class="muted">{{ s.summary }}</td>
+        <td class="right nowrap">
+          <button class="link small" type="button" onclick="emShow('scan-vantage-{{ s.id }}')">Edit</button>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="muted">No imports yet.</td></tr>
+      <tr><td colspan="7" class="muted">No imports yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% for s in scans %}
+<dialog id="scan-vantage-{{ s.id }}" class="modal">
+  <div class="modal-head">
+    <h3>Scanned from</h3>
+    <button type="button" class="icon" onclick="emClose('scan-vantage-{{ s.id }}')" aria-label="Close">✕</button>
+  </div>
+  <form method="post" action="/scans/{{ s.id }}/vantage">
+    <p class="muted small">Correct where this scan was run from. The topology paths this scan created are re-pointed at the chosen host.</p>
+    <div class="field">
+      <label>Vantage</label>
+      <select name="vantage">
+        <option value="" {{ 'selected' if not s.vantage_host_id else '' }}>Operator box (direct)</option>
+        {% for h in hosts %}<option value="{{ h.id }}" {{ 'selected' if s.vantage_host_id == h.id else '' }}>via {{ h.hostname or h.ip }}{% if h.hostname %} ({{ h.ip }}){% endif %}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="secondary" onclick="emClose('scan-vantage-{{ s.id }}')">Cancel</button>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
 {% else %}
   <div class="card muted">Create an engagement first.</div>
 {% endif %}

@@ -1010,8 +1010,11 @@ def scans_page(request: Request, session: Session = Depends(get_session)):
         hosts = session.exec(
             select(Host).where(Host.engagement_id == active.id).order_by(Host.ip)
         ).all()
+    host_names = {h.id: (h.hostname or h.ip) for h in hosts}
     return templates.TemplateResponse(
-        request, "scans.html", _ctx(request, session, scans=scans, hosts=hosts)
+        request,
+        "scans.html",
+        _ctx(request, session, scans=scans, hosts=hosts, host_names=host_names),
     )
 
 
@@ -1056,8 +1059,53 @@ async def upload_scan(
             "scans.html",
             _ctx(
                 request, session, scans=scans, hosts=hosts,
+                host_names={h.id: (h.hostname or h.ip) for h in hosts},
                 error="Some files failed to import — " + "; ".join(errors),
             ),
             status_code=422,
         )
+    return RedirectResponse("/scans", status_code=303)
+
+
+@app.post("/scans/{scan_id}/vantage")
+def update_scan_vantage(
+    scan_id: int, vantage: str = Form(""), session: Session = Depends(get_session)
+):
+    """Correct the 'scanned from' host of an already-imported scan.
+
+    Re-points the reach edges this scan created at the new vantage, so the
+    topology stays consistent without re-importing.
+    """
+    scan = session.get(ScanImport, scan_id)
+    if not scan:
+        return RedirectResponse("/scans", status_code=303)
+    new_vantage = int(vantage) if vantage.strip().isdigit() else None
+    scan.vantage_host_id = new_vantage
+    session.add(scan)
+
+    edges = session.exec(
+        select(Reachability).where(Reachability.discovered_by_scan_id == scan_id)
+    ).all()
+    for e in edges:
+        if e.host_id == new_vantage:
+            session.delete(e)  # a host can't be reached via itself
+            continue
+        dup = session.exec(
+            select(Reachability).where(
+                Reachability.engagement_id == e.engagement_id,
+                Reachability.host_id == e.host_id,
+                Reachability.via_host_id == new_vantage,
+                Reachability.id != e.id,
+            )
+        ).first()
+        if dup:
+            session.delete(e)  # an equivalent path already exists
+            continue
+        if new_vantage is None:
+            e.method = ReachMethod.direct
+        elif e.method == ReachMethod.direct:
+            e.method = ReachMethod.other
+        e.via_host_id = new_vantage
+        session.add(e)
+    session.commit()
     return RedirectResponse("/scans", status_code=303)
