@@ -137,6 +137,12 @@ Pivots with no recorded inbound path are attached to the operator with a dashed
 "Scanned from" choice appears on the import dialog, and each host page lists and
 lets you edit how that host is reached.
 
+Each node is labeled with the host's nickname, which defaults to its hostname
+(or IP). Set a nickname such as "Domain controller" or "Web front" on the host
+page to make the map easier to read.
+
+![Topology page showing the operator box, a pivot, and hosts reached through ligolo, chisel, and ssh tunnels](docs/topology.png)
+
 ### Other commands
 
 ```bash
@@ -208,7 +214,7 @@ one place so you can pull it into your own report template.
 
 ```
 Engagement                   one assessment; scopes everything below
-  Host                       a target computer (IP, hostname, OS, domain, tags)
+  Host                       a target computer (IP, hostname, nickname, OS, domain, tags)
     Service                  an open port / service on that host
     Evidence                 a proof screenshot (image bytes stored in the db)
     Exploit                  an exploit used (source URL; modified code + changes)
