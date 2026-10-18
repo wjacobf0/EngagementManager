@@ -116,12 +116,12 @@
           </td>
           {% for h in cov.hosts %}
           {% set cell = cov.cells[(c.id, h.id)] %}
-          <td class="cell {{ cell.status }}"
-              title="{% if cell.tried_protos %}tried: {{ cell.tried_protos | join(', ') }}{% endif %}{% if cell.untried_protos %}{% if cell.tried_protos %} · {% endif %}untried: {{ cell.untried_protos | join(', ') }}{% endif %}">
-            {%- if cell.status == 'admin' -%}A
-            {%- elif cell.status == 'user' -%}u
-            {%- elif cell.status == 'fail' -%}✗
-            {%- elif cell.status == 'gap' -%}·
+          <td class="cell {{ cell.display_status }}"
+              title="{% if cell.owned and cell.status == 'gap' %}host already owned at admin — nothing to spray{% else %}{% if cell.tried_protos %}tried: {{ cell.tried_protos | join(', ') }}{% endif %}{% if cell.untried_protos %}{% if cell.tried_protos %} · {% endif %}untried: {{ cell.untried_protos | join(', ') }}{% endif %}{% endif %}">
+            {%- if cell.display_status == 'admin' -%}A
+            {%- elif cell.display_status == 'user' -%}u
+            {%- elif cell.display_status == 'fail' -%}✗
+            {%- elif cell.display_status == 'gap' -%}·
             {%- else -%}–{%- endif -%}
             {%- if cell.partial %}<b class="plus">+</b>{% endif -%}
           </td>

@@ -56,11 +56,23 @@ class Cell:
     status: str  # admin | user | fail | gap | na
     tried_protos: list[str] = field(default_factory=list)
     untried_protos: list[str] = field(default_factory=list)
+    owned: bool = False  # some credential already has admin on this host
+
+    @property
+    def display_status(self) -> str:
+        # A never-tried credential on a box that's already owned at admin has
+        # nothing left to prove there, so it reads as n/a rather than a gap.
+        if self.owned and self.status == "gap":
+            return "na"
+        return self.status
 
     @property
     def partial(self) -> bool:
         # Untried protocols remain on a host we've touched — but admin is root,
-        # so once this credential has admin here the rest isn't a gap worth the +.
+        # so once this credential has admin here the rest isn't a gap worth the
+        # +. Likewise if any credential already owns the host: it's done.
+        if self.owned:
+            return False
         return self.status in ("user", "fail") and bool(self.untried_protos)
 
 
@@ -136,7 +148,12 @@ def build_coverage(session: Session, engagement_id: int) -> Coverage:
             else:
                 status = "fail"
 
-            cell = Cell(status=status, tried_protos=tried_protos, untried_protos=untried)
+            cell = Cell(
+                status=status,
+                tried_protos=tried_protos,
+                untried_protos=untried,
+                owned=host.id in owned_hosts,
+            )
             cells[(cred.id, host.id)] = cell
 
             # Owned boxes are done — keep them in the matrix but not in the gaps.
