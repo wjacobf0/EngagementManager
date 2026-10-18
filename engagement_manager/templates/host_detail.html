@@ -54,6 +54,25 @@
 </form>
 {% endmacro %}
 
+{% macro finding_form(action, close_id, severities, f=None) %}
+<form method="post" action="{{ action }}">
+  <div class="row">
+    <div class="field grow"><label>Title</label><input name="title" value="{{ f.title if f else '' }}" placeholder="SMB signing not required" required /></div>
+    <div class="field"><label>Severity</label>
+      <select name="severity">
+        {% for s in severities %}<option value="{{ s.value }}" {{ 'selected' if (f and f.severity==s) or (not f and s.value=='medium') else '' }}>{{ s.value }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field"><label>Description / impact</label><textarea name="description" rows="4" placeholder="What it is and why it matters.">{{ f.description or '' if f else '' }}</textarea></div>
+  <div class="field"><label>Steps to reproduce / exploit</label><textarea name="steps" rows="6" class="mono" placeholder="1. ...&#10;2. ...">{{ f.steps or '' if f else '' }}</textarea></div>
+  <div class="modal-actions">
+    <button type="button" class="secondary" onclick="emClose('{{ close_id }}')">Cancel</button>
+    <button type="submit">Save finding</button>
+  </div>
+</form>
+{% endmacro %}
+
 {% macro exploit_form(action, close_id, e=None) %}
 <form method="post" action="{{ action }}">
   <div class="field"><label>Title</label><input name="title" value="{{ e.title if e else '' }}" placeholder="CVE-2021-34527 PrintNightmare" required /></div>
@@ -196,6 +215,46 @@
     </div>
   </form>
 </dialog>
+
+<div class="card">
+  <div class="card-head">
+    <h3>Findings</h3>
+    <button type="button" onclick="emShow('add-finding')">+ Add finding</button>
+  </div>
+  <table>
+    <thead><tr><th>Severity</th><th>Title</th><th></th></tr></thead>
+    <tbody>
+      {% for f in host_findings %}
+      <tr>
+        <td><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+        <td>
+          {{ f.title }}
+          {% if f.description %}<div class="muted small wrap">{{ f.description }}</div>{% endif %}
+        </td>
+        <td class="right nowrap">
+          <button class="link small" type="button" onclick="emShow('hf-edit-{{ f.id }}')">Edit</button>
+          <form method="post" action="/hosts/{{ host.id }}/findings/{{ f.id }}/delete" onsubmit="return confirm('Delete finding &quot;{{ f.title }}&quot;?')">
+            <button class="danger small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">No findings recorded for this host. They also appear on the <a href="/findings">Findings</a> page.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<dialog id="add-finding" class="modal">
+  <div class="modal-head"><h3>Add finding</h3><button type="button" class="icon" onclick="emClose('add-finding')" aria-label="Close">✕</button></div>
+  {{ finding_form('/hosts/' ~ host.id ~ '/findings', 'add-finding', severities) }}
+</dialog>
+{% for f in host_findings %}
+<dialog id="hf-edit-{{ f.id }}" class="modal">
+  <div class="modal-head"><h3>Edit finding</h3><button type="button" class="icon" onclick="emClose('hf-edit-{{ f.id }}')" aria-label="Close">✕</button></div>
+  {{ finding_form('/hosts/' ~ host.id ~ '/findings/' ~ f.id ~ '/edit', 'hf-edit-' ~ f.id, severities, f) }}
+</dialog>
+{% endfor %}
 
 <div class="card">
   <div class="card-head">

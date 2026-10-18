@@ -214,6 +214,10 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
     reach_edges = session.exec(
         select(Reachability).where(Reachability.host_id == host_id)
     ).all()
+    host_findings = sorted(
+        session.exec(select(Finding).where(Finding.host_id == host_id)).all(),
+        key=lambda f: (_SEVERITY_ORDER.get(f.severity, 9), f.created_at),
+    )
     pivot_names = {
         h.id: (h.hostname or h.ip)
         for h in session.exec(
@@ -235,6 +239,8 @@ def host_detail(host_id: int, request: Request, session: Session = Depends(get_s
             cred_rows=cred_rows,
             secret_types=list(SecretType),
             access_levels=list(AccessLevel),
+            host_findings=host_findings,
+            severities=list(Severity),
             reach_edges=reach_edges,
             pivot_names=pivot_names,
             pivot_choices=pivot_choices,
@@ -462,6 +468,73 @@ def delete_reach(edge_id: int, session: Session = Depends(get_session)):
         session.commit()
     target = f"/hosts/{host_id}" if host_id else "/topology"
     return RedirectResponse(target, status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Findings attached to a host (add / edit / delete, redirecting back to host)
+# --------------------------------------------------------------------------- #
+@app.post("/hosts/{host_id}/findings")
+def add_host_finding(
+    host_id: int,
+    title: str = Form(...),
+    severity: str = Form("medium"),
+    description: str = Form(""),
+    steps: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host and title.strip():
+        try:
+            sev = Severity(severity)
+        except ValueError:
+            sev = Severity.medium
+        session.add(
+            Finding(
+                engagement_id=host.engagement_id,
+                host_id=host_id,
+                title=title.strip(),
+                severity=sev,
+                description=description or None,
+                steps=steps or None,
+            )
+        )
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.post("/hosts/{host_id}/findings/{finding_id}/edit")
+def edit_host_finding(
+    host_id: int,
+    finding_id: int,
+    title: str = Form(...),
+    severity: str = Form("medium"),
+    description: str = Form(""),
+    steps: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    finding = session.get(Finding, finding_id)
+    if finding and title.strip():
+        try:
+            finding.severity = Severity(severity)
+        except ValueError:
+            pass
+        finding.title = title.strip()
+        finding.description = description or None
+        finding.steps = steps or None
+        session.add(finding)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
+@app.post("/hosts/{host_id}/findings/{finding_id}/delete")
+def delete_host_finding(
+    host_id: int, finding_id: int, session: Session = Depends(get_session)
+):
+    finding = session.get(Finding, finding_id)
+    if finding:
+        session.delete(finding)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
 # --------------------------------------------------------------------------- #
