@@ -126,10 +126,7 @@ def graph_payload(topo: Topology) -> dict:
     ]
     for hid, node in topo.nodes.items():
         h = node.host
-        label = h.hostname or h.ip
-        if h.nickname:
-            label = f"{h.nickname}
-{label}"
+        label = h.nickname or h.hostname or h.ip
         elements.append({
             "data": {
                 "id": str(hid),

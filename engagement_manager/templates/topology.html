@@ -35,7 +35,7 @@
   <h3>Not placed on the map</h3>
   <p class="muted small">These hosts exist but have no reachability path yet. Set one on the host page or re-import the scan with a “Scanned from” value.</p>
   <p>
-    {% for h in topo.orphans %}<a href="/hosts/{{ h.id }}" class="chip">{% if h.nickname %}{{ h.nickname }} · {% endif %}{{ h.hostname or h.ip }}</a> {% endfor %}
+    {% for h in topo.orphans %}<a href="/hosts/{{ h.id }}" class="chip">{{ h.nickname or h.hostname or h.ip }}</a> {% endfor %}
   </p>
 </div>
 {% endif %}

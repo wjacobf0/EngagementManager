@@ -271,7 +271,10 @@ def update_host_nickname(
 ):
     host = session.get(Host, host_id)
     if host:
-        host.nickname = nickname.strip() or None
+        # Storing the hostname itself is redundant: the label already falls
+        # back to it, and leaving it unset keeps tracking hostname changes.
+        nickname = nickname.strip()
+        host.nickname = nickname if nickname and nickname != host.hostname else None
         session.add(host)
         session.commit()
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
