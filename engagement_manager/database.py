@@ -35,6 +35,7 @@ def _migrate() -> None:
             ("local_flag", "VARCHAR"),
             ("rooted", "BOOLEAN DEFAULT 0"),
             ("proof_flag", "VARCHAR"),
+            ("nickname", "VARCHAR"),
         ],
         "credential": [("cracked_encrypted", "VARCHAR")],
     }

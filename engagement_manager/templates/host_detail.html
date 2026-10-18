@@ -95,6 +95,7 @@
 <div class="topbar">
   <a href="/hosts" class="muted">← Hosts</a>
   <h1 class="mono">{{ host.ip }}</h1>
+  {% if host.nickname %}<span class="muted">{{ host.nickname }}</span>{% endif %}
   <span class="badge {{ host.status.value }}">{{ host.status.value }}</span>
 </div>
 
@@ -105,6 +106,10 @@
     <div><span class="l">OS</span>{{ host.os or "—" }}</div>
     <div><span class="l">Tags</span>{{ host.tags or "—" }}</div>
   </div>
+  <form method="post" action="/hosts/{{ host.id }}/nickname" class="row" style="margin-top:14px;align-items:flex-end">
+    <div class="field grow"><label>Nickname (shown on Topology)</label><input name="nickname" value="{{ host.nickname or '' }}" placeholder="e.g. Web front, DC, Jump box" /></div>
+    <div class="field"><button type="submit">Save nickname</button></div>
+  </form>
 </div>
 
 <div class="card">

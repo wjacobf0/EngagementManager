@@ -97,6 +97,8 @@ class Host(SQLModel, table=True):
     engagement_id: int = Field(foreign_key="engagement.id", index=True)
     ip: str = Field(index=True)
     hostname: Optional[str] = Field(default=None, index=True)
+    # Operator-chosen label (e.g. "web front", "DC") shown on the topology map.
+    nickname: Optional[str] = None
     os: Optional[str] = None
     domain: Optional[str] = Field(default=None, index=True)
     status: HostStatus = Field(default=HostStatus.unknown)

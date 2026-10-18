@@ -263,6 +263,20 @@ def update_host_notes(
     return RedirectResponse(f"/hosts/{host_id}", status_code=303)
 
 
+@app.post("/hosts/{host_id}/nickname")
+def update_host_nickname(
+    host_id: int,
+    nickname: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    host = session.get(Host, host_id)
+    if host:
+        host.nickname = nickname.strip() or None
+        session.add(host)
+        session.commit()
+    return RedirectResponse(f"/hosts/{host_id}", status_code=303)
+
+
 @app.post("/hosts/{host_id}/progress")
 def update_progress(
     host_id: int,

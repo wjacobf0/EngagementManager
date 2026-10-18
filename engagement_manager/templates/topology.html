@@ -35,7 +35,7 @@
   <h3>Not placed on the map</h3>
   <p class="muted small">These hosts exist but have no reachability path yet. Set one on the host page or re-import the scan with a “Scanned from” value.</p>
   <p>
-    {% for h in topo.orphans %}<a href="/hosts/{{ h.id }}" class="chip">{{ h.hostname or h.ip }}</a> {% endfor %}
+    {% for h in topo.orphans %}<a href="/hosts/{{ h.id }}" class="chip">{% if h.nickname %}{{ h.nickname }} · {% endif %}{{ h.hostname or h.ip }}</a> {% endfor %}
   </p>
 </div>
 {% endif %}
@@ -81,6 +81,7 @@
         { selector: 'node', style: {
             'label': 'data(label)', 'color': C.text, 'font-size': 12,
             'text-valign': 'bottom', 'text-margin-y': 6,
+            'text-wrap': 'wrap', 'text-halign': 'center',
             'background-color': ele => ele.data('kind') === 'operator' ? C.muted : accessColor(ele.data('access')),
             'border-width': 2, 'border-color': C.border,
             'width': 34, 'height': 34,
