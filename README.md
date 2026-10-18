@@ -110,7 +110,10 @@ engagement-manager import nxc acme-nxc.txt -e "ACME Internal"
 
 The engagement is created automatically if the name is new. Re-importing merges
 by IP, so running the same scan twice updates hosts instead of duplicating them.
-NetExec lines ending in `Pwn3d!` are recorded as admin access on that host.
+NetExec lines ending in `Pwn3d!` are recorded as admin access only on the
+protocols whose exec method requires it (SMB, WMI, MSSQL). A `Pwn3d!` over SSH,
+WinRM, or RDP only proves command execution as the account that logged in —
+often unprivileged — so it is recorded as user-level access, not admin.
 
 ### Topology and pivots
 

@@ -23,6 +23,14 @@ _CRED = re.compile(
     r"\[(?P<result>[+\-])\]\s+(?:(?P<domain>[^\\\s]+)\\)?(?P<user>[^:\s]+):(?P<secret>\S+)(?P<pwned>.*)$"
 )
 
+# NetExec prints (Pwn3d!) whenever its exec method for a protocol succeeded.
+# That proves command execution, but it only proves *admin* on the protocols
+# whose exec path requires local admin (SMB/WMI psexec-style methods, and
+# MSSQL via xp_cmdshell which needs sysadmin). Over SSH, WinRM or RDP a
+# (Pwn3d!) is just a shell as whatever account authenticated — often an
+# unprivileged user, not root/admin — so it is recorded as user-level access.
+_ADMIN_PWN_PROTOS = {"smb", "wmi", "mssql"}
+
 
 @dataclass
 class ParsedAuth:
@@ -32,7 +40,7 @@ class ParsedAuth:
     username: str
     secret: str
     success: bool  # [+] succeeded vs [-] failed
-    admin: bool  # Pwn3d! => admin on this host
+    admin: bool  # Pwn3d! on an admin-only exec protocol => admin on this host
 
 
 @dataclass
@@ -80,6 +88,7 @@ def parse_nxc_output(text: str) -> ParsedNxc:
         cred_m = _CRED.search(rest)
         if cred_m:
             success = cred_m.group("result") == "+"
+            pwned = success and "pwn3d" in cred_m.group("pwned").lower()
             result.auths.append(
                 ParsedAuth(
                     ip=ip,
@@ -88,7 +97,7 @@ def parse_nxc_output(text: str) -> ParsedNxc:
                     username=cred_m.group("user"),
                     secret=cred_m.group("secret"),
                     success=success,
-                    admin=success and "pwn3d" in cred_m.group("pwned").lower(),
+                    admin=pwned and proto in _ADMIN_PWN_PROTOS,
                 )
             )
 
