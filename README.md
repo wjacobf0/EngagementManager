@@ -1,5 +1,7 @@
 # Engagement Manager
 
+![Topology page showing the operator box, a pivot, and hosts reached through ligolo, chisel, and ssh tunnels](docs/topology.png)
+
 A local, **Python-only** tool for keeping track of a penetration test: hosts,
 services, users, credentials (passwords and hashes), per-host progress
 (foothold / local.txt / privesc / proof.txt), proof screenshots, exploits,
@@ -79,6 +81,12 @@ engagement-manager serve --no-open --port 8000   # headless / custom port
 Create an engagement, then add hosts and credentials or import scans. The active
 engagement is remembered across pages and shown in the top selector.
 
+The **Scan Imports** page takes nmap XML or NetExec output from the browser.
+Select several files at once and each is imported on its own, so one malformed
+file doesn't stop the rest. Each import records where the scan was run from
+(see [Topology and pivots](#topology-and-pivots)), and you can correct that
+afterwards from the import list.
+
 ### Import scans from the terminal
 
 On Linux (Kali):
@@ -140,8 +148,6 @@ lets you edit how that host is reached.
 Each node is labeled with the host's nickname, which defaults to its hostname
 (or IP). Set a nickname such as "Domain controller" or "Web front" on the host
 page to make the map easier to read.
-
-![Topology page showing the operator box, a pivot, and hosts reached through ligolo, chisel, and ssh tunnels](docs/topology.png)
 
 ### Other commands
 
@@ -205,10 +211,40 @@ OSCP's standard: for an unmodified exploit it records just the source URL, and
 for a modified one it captures the modified code, the original URL, the command
 used to generate any shellcode, the highlighted changes, and why you made them.
 
-The **Findings** page records vulnerabilities (title, severity, optional host,
-impact, and reproduction steps). All of this — per-host progress, open ports,
-proof screenshots, exploits, recovered credentials, and findings — is kept in
-one place so you can pull it into your own report template.
+The rest of the host page holds:
+
+- **Notes:** free-form enumeration notes, things tried, privesc ideas.
+- **Reachability:** how the host is reached (directly or through a pivot);
+  this is what the Topology map is drawn from.
+- **Findings:** vulnerabilities on this host, added and edited in place.
+- **Open ports / services:** filled in by imports, editable by hand.
+- **Credentials proven here:** which credentials worked and at what access level.
+- **Scripts:** scripts or snippets tied to the host (a tunnel or pivot script,
+  for example), written in place or uploaded, and downloadable again.
+
+The **Findings** page lists every vulnerability in the engagement (title,
+severity, optional host, impact, and reproduction steps). All of this — per-host
+progress, open ports, proof screenshots, exploits, recovered credentials, and
+findings — is kept in one place so you can pull it into your own report template.
+
+## Credentials and coverage gaps
+
+The **Credentials** page lists every username and secret captured in the
+engagement. A hash can also store the plaintext it cracked to, so one entry
+holds both. Mark a credential as validated once you've confirmed it works, and
+merge duplicates: the duplicate's per-host results move onto the credential you
+keep, keeping the stronger access level where both have one, and the duplicate
+is deleted.
+
+The **Coverage & Gaps** page answers "where haven't I tried this credential
+yet?" It infers which login protocols each host offers from its open ports
+(SMB, WinRM, SSH, RDP, MSSQL, LDAP, FTP, WMI) and checks them against what each
+credential can actually be used for: a password works anywhere, an NT hash
+only over pass-the-hash protocols (not SSH or FTP), and an SSH key only over
+SSH. The result is a list of gaps to close (credential and host pairs never
+tried, or tried on only some of the host's protocols) with a suggested command
+for each, plus a full credential-by-host matrix. Hosts where you already have
+admin are left out of the gap list.
 
 ## Data model
 
@@ -218,11 +254,13 @@ Engagement                   one assessment; scopes everything below
     Service                  an open port / service on that host
     Evidence                 a proof screenshot (image bytes stored in the db)
     Exploit                  an exploit used (source URL; modified code + changes)
-                             + OSCP progress: foothold, local_flag, rooted, proof_flag
-  Credential                 username + secret (Fernet-encrypted at rest)
+    Script                   a script or snippet attached to the host (e.g. a tunnel script)
+                             + notes and OSCP progress: foothold, local_flag, rooted, proof_flag
+  Credential                 username + secret, and cracked plaintext (Fernet-encrypted at rest)
   Finding                    a vulnerability (severity, impact, steps), optionally per-host
-  ScanImport                 raw nmap/nxc upload + parsed summary
-HostCredential               a credential proven against a host, with access level
+  Reachability               how a host is reached: directly, or via a pivot host and method
+  ScanImport                 raw nmap/nxc upload + parsed summary + where it was run from
+HostCredential               a credential proven against a host, with access level and protocol
 ```
 
 ## Security notes
